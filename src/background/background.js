@@ -74,7 +74,7 @@ It is against the Member Agreement to use Nextdoor to sell weapons or ammunition
 **Illicit or dangerous actions:**  
 Encouraging or facilitating illegal or dangerous actions is disallowed.
 
----
+--- 
 
 _End of Guidelines_
 `;
@@ -133,11 +133,23 @@ async function analyzeWithLLM(originalPost, flaggedContent, conversationThread =
 
   // Build conversation thread text for prompt
   let threadText = '';
+  let parentCommentInfo = null;
+
   if (conversationThread && conversationThread.length > 0) {
-    threadText = '\n\nCONVERSATION THREAD:\n';
-    conversationThread.forEach((msg) => {
+    threadText = '\n\nCONVERSATION THREAD (indentation shows reply relationships):\n';
+
+    conversationThread.forEach((msg, idx) => {
       const indent = '  '.repeat(Math.max(0, msg.depth || 0));
       threadText += `${indent}→ ${msg.author}: "${msg.content}"\n`;
+
+      // If this is the second-to-last message (before flagged content), it's the parent
+      if (idx === conversationThread.length - 2) {
+        parentCommentInfo = {
+          author: msg.author,
+          content: msg.content,
+          depth: msg.depth
+        };
+      }
     });
   }
 
@@ -218,7 +230,15 @@ ORIGINAL POST (for context only):
 Author: ${originalPost?.author || 'Unknown'}
 Content: ${originalPost?.content || 'Not available'}
 ${threadText}
+${parentCommentInfo && parentCommentInfo.depth >= 0 ?
+`
+RESPONSE RELATIONSHIP:
+The flagged content below is responding to ${parentCommentInfo.author}'s comment:
+"${parentCommentInfo.content}"
 
+Focus your analysis primarily on the flagged content and its relationship to this specific comment. The entire conversation thread above provides background context, but evaluate whether the flagged response is appropriate given what it's responding to.
+` :
+'\nThe flagged content below is responding directly to the original post.\n'}
 FLAGGED CONTENT (this is what you are evaluating):
 Author: ${flaggedContent?.author || 'Unknown'}
 Content: ${flaggedContent?.content || 'Not available'}

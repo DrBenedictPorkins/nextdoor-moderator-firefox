@@ -246,8 +246,9 @@ function extractModerationData() {
      * @param {Array} edges - Array of comment edges from GraphQL response
      * @param {Array} parentThread - Array of parent comments leading to this level
      * @param {number} depth - Current nesting depth
+     * @param {Array} allComments - Collection of all processed comments (for sibling search)
      */
-    function findFlaggedCommentsRecursive(edges, parentThread = [], depth = 0) {
+    function findFlaggedCommentsRecursive(edges, parentThread = [], depth = 0, allComments = []) {
       if (!edges || edges.length === 0) return;
 
       edges.forEach((edge) => {
@@ -263,19 +264,29 @@ function extractModerationData() {
           content: commentContent,
           author: comment.author?.displayName || 'Unknown',
           authorUrl: comment.author?.url || '',
+          authorUserId: comment.author?.user?.id || null,  // Store user ID for matching
           createdAt: comment.createdAt?.asDateTime?.relativeTime || '',
+          createdAtEpoch: comment.createdAt?.epochMillis || null,  // Store timestamp for filtering
           depth: depth,
+          tags: comment.tags || [],  // Store tags array
         };
+
+        // Add this comment to the global collection for sibling search
+        allComments.push(commentData);
 
         // Check if this comment is flagged
         if (comment.moderationInfo?.moderationSummaryV3) {
           const commentModerationDetails = parseModerationSummary(comment.moderationInfo.moderationSummaryV3);
+
+          // Build smart minimal conversation thread based on tags
+          const smartThread = buildSmartConversationThread(commentData, parentThread, allComments);
+
           flaggedComments.push({
             ...commentData,
             moderationSummary: comment.moderationInfo.moderationSummaryV3,
             moderationDetails: commentModerationDetails,
-            // Full conversation thread: parent chain + this flagged comment
-            conversationThread: [...parentThread, commentData],
+            // Smart conversation thread: only relevant context
+            conversationThread: smartThread,
           });
         }
 
@@ -286,10 +297,120 @@ function extractModerationData() {
           findFlaggedCommentsRecursive(
             nestedReplies,
             [...parentThread, commentData], // Add current comment to thread
-            depth + 1
+            depth + 1,
+            allComments  // Pass along the collection
           );
         }
       });
+    }
+
+    /**
+     * Build a smart minimal conversation thread based on @mention tags
+     * @param {Object} flaggedComment - The flagged comment data
+     * @param {Array} parentThread - Full parent chain including original post
+     * @param {Array} allComments - Collection of all processed comments (for sibling search)
+     * @returns {Array} - Minimal conversation thread with only relevant context
+     */
+    function buildSmartConversationThread(flaggedComment, parentThread, allComments = []) {
+      console.log('[Content] Building smart thread for flagged comment:', flaggedComment.id);
+      console.log('[Content] Flagged comment tags:', JSON.stringify(flaggedComment.tags, null, 2));
+      console.log('[Content] Parent thread length:', parentThread.length);
+      console.log('[Content] All comments available for search:', allComments.length);
+
+      // Always include original post (depth: -1)
+      const originalPost = parentThread.find(msg => msg.depth === -1);
+      if (!originalPost) {
+        console.warn('[Content] No original post found in parent thread');
+        return [flaggedComment];
+      }
+
+      // Analyze tags array for USER mentions at start of text
+      const userTags = (flaggedComment.tags || []).filter(tag =>
+        tag.type === 'USER' &&
+        tag.startIndex !== undefined &&
+        tag.startIndex < 20  // Mentioned at/near start
+      );
+
+      console.log('[Content] Found USER tags at start:', userTags.length);
+
+      if (userTags.length > 0) {
+        // Strategy 1: Find mentioned users' comments in ALL comments (including siblings)
+        const mentionedUserIds = new Set(userTags.map(tag => tag.entityId));
+        console.log('[Content] Mentioned user IDs:', Array.from(mentionedUserIds));
+
+        const flaggedEpoch = parseInt(flaggedComment.createdAtEpoch) || Infinity;
+        const mentionedComments = [];
+
+        // Search ALL comments (not just parent chain) for mentioned users
+        for (const comment of allComments) {
+          if (mentionedUserIds.has(comment.authorUserId)) {
+            const commentEpoch = parseInt(comment.createdAtEpoch) || 0;
+
+            // Only include if posted before flagged comment
+            if (commentEpoch <= flaggedEpoch) {
+              mentionedComments.push(comment);
+            }
+          }
+        }
+
+        if (mentionedComments.length > 0) {
+          console.log('[Content] Found mentioned users in all comments:', mentionedComments.length);
+
+          // For each mentioned user, keep only their most recent comment
+          const userToMostRecentComment = new Map();
+
+          for (const comment of mentionedComments) {
+            const existingComment = userToMostRecentComment.get(comment.authorUserId);
+            if (!existingComment) {
+              userToMostRecentComment.set(comment.authorUserId, comment);
+            } else {
+              const existingEpoch = parseInt(existingComment.createdAtEpoch) || 0;
+              const currentEpoch = parseInt(comment.createdAtEpoch) || 0;
+              if (currentEpoch > existingEpoch) {
+                userToMostRecentComment.set(comment.authorUserId, comment);
+              }
+            }
+          }
+
+          const uniqueMentionedComments = Array.from(userToMostRecentComment.values());
+
+          // Sort by timestamp (chronological order)
+          uniqueMentionedComments.sort((a, b) => {
+            const epochA = parseInt(a.createdAtEpoch) || 0;
+            const epochB = parseInt(b.createdAtEpoch) || 0;
+            return epochA - epochB;
+          });
+
+          // Build thread: [parent chain, mentioned comments, flagged comment]
+          const smartThread = [...parentThread, ...uniqueMentionedComments, flaggedComment];
+
+          console.log('[Content] Smart thread structure (Strategy 1 - with siblings):',
+            smartThread.map(c => `${c.author} (depth ${c.depth})`).join(' → '));
+
+          return smartThread;
+        } else {
+          console.log('[Content] No matching mentioned users found in all comments');
+        }
+      }
+
+      // Strategy 2 (fallback): No USER tags or no matches - include direct parent only
+      console.log('[Content] Using fallback strategy: direct parent only');
+
+      // Find direct parent (comment at depth N-1 where N is flagged comment's depth)
+      const directParent = parentThread
+        .filter(msg => msg.depth !== -1)  // Exclude original post
+        .slice(-1)[0];  // Get last comment in chain (immediate parent)
+
+      if (directParent) {
+        const smartThread = [originalPost, directParent, flaggedComment];
+        console.log('[Content] Built fallback thread:', smartThread.length, 'messages');
+        console.log('[Content] Thread structure:', smartThread.map(m => `${m.author} (depth: ${m.depth})`).join(' → '));
+        return smartThread;
+      }
+
+      // Last resort: just original post + flagged comment
+      console.log('[Content] Last resort: original post + flagged comment only');
+      return [originalPost, flaggedComment];
     }
 
     // Start recursive search from top-level comments
@@ -300,13 +421,19 @@ function extractModerationData() {
       content: originalPost.content,
       author: originalPost.author,
       authorUrl: originalPost.authorUrl,
+      authorUserId: post.author?.user?.id || null,  // Store user ID for consistency
       createdAt: originalPost.createdAt,
+      createdAtEpoch: post.createdAt?.epochMillis || null,  // Store timestamp
       depth: -1, // Mark as original post (before comments)
       isOriginalPost: true,
+      tags: post.tags || [],  // Store tags array for consistency
     };
 
+    // Initialize allComments collection with original post
+    const allComments = [originalPostContext];
+
     const topLevelComments = post.comments?.pagedComments?.edges || [];
-    findFlaggedCommentsRecursive(topLevelComments, [originalPostContext]);
+    findFlaggedCommentsRecursive(topLevelComments, [originalPostContext], 0, allComments);
 
     // Determine what is flagged
     const validation = {
@@ -1226,6 +1353,50 @@ function showAnalysisOverlay(analysisText) {
 }
 
 /**
+ * Apply color and emoji styling to Vote Suggestion line
+ */
+function styleVoteSuggestion(analysisText) {
+  if (!analysisText) return analysisText;
+
+  // Define vote styling
+  const voteStyles = {
+    'keep': {
+      color: '#2e7d32',
+      emoji: '✓',
+      label: 'Keep'
+    },
+    'remove': {
+      color: '#c62828',
+      emoji: '✗',
+      label: 'Remove'
+    },
+    'maybe remove': {
+      color: '#757575',
+      emoji: '−',
+      label: 'Maybe Remove'
+    },
+    'abstain': {
+      color: '#757575',
+      emoji: '−',
+      label: 'Abstain'
+    }
+  };
+
+  // Find and replace Vote Suggestion line
+  // Regex to match: **Vote Suggestion:** Keep or Remove or Maybe Remove
+  const voteRegex = /\*\*Vote Suggestion:\*\*\s*(Keep|Remove|Maybe Remove|Abstain)/i;
+
+  const styledText = analysisText.replace(voteRegex, (match, voteType) => {
+    const voteLower = voteType.toLowerCase();
+    const style = voteStyles[voteLower] || voteStyles['maybe remove']; // fallback to gray
+
+    return `<strong>Vote Suggestion:</strong> <span style="color: ${style.color}; font-weight: bold;">${style.emoji} ${style.label}</span>`;
+  });
+
+  return styledText;
+}
+
+/**
  * Listen for messages from background script
  */
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -1278,7 +1449,9 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // Inject analysis into the container
       if (message.analysis?.analysisText) {
         console.log('[Content] Displaying analysis in overlay:', message.analysis.analysisText.substring(0, 100));
-        const formattedAnalysis = formatAIAnalysis(message.analysis.analysisText);
+        // Apply vote suggestion styling before formatting
+        const styledAnalysisText = styleVoteSuggestion(message.analysis.analysisText);
+        const formattedAnalysis = formatAIAnalysis(styledAnalysisText);
         analysisContainer.innerHTML = `
           <div style="background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; padding: 16px; margin-top: 12px;">
             ${formattedAnalysis}
@@ -1302,7 +1475,9 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       console.warn('[Content] Analysis container not found, falling back to legacy behavior');
       // Fallback to old behavior if container doesn't exist (shouldn't happen)
       if (message.analysis?.analysisText) {
-        showAnalysisOverlay(message.analysis.analysisText);
+        // Apply vote suggestion styling before displaying
+        const styledAnalysisText = styleVoteSuggestion(message.analysis.analysisText);
+        showAnalysisOverlay(styledAnalysisText);
       } else {
         showErrorOverlay('No analysis result received');
       }
