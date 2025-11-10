@@ -1051,6 +1051,44 @@ function createContentOverlay(result) {
     </div>
   `;
 
+  // Add build info footer (load asynchronously after overlay is in DOM)
+  const addBuildInfoFooter = async () => {
+    try {
+      const buildInfoUrl = browser.runtime.getURL('build-info.json');
+      const response = await fetch(buildInfoUrl);
+      const buildInfo = await response.json();
+
+      const footer = document.createElement('div');
+      footer.style.cssText = 'text-align: center; padding: 8px; color: #999; font-size: 11px; border-top: 1px solid #ddd; margin-top: 16px;';
+
+      let footerText = `Version ${buildInfo.version}`;
+
+      if (buildInfo.buildTime) {
+        const buildDate = new Date(buildInfo.buildTime);
+        const formattedDate = buildDate.toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true
+        });
+        footerText += ` • Built: ${formattedDate}`;
+      }
+
+      footer.textContent = footerText;
+      overlay.appendChild(footer);
+    } catch (error) {
+      console.error('Error loading build info:', error);
+      // Fallback: show version only from manifest
+      const manifest = browser.runtime.getManifest();
+      const footer = document.createElement('div');
+      footer.style.cssText = 'text-align: center; padding: 8px; color: #999; font-size: 11px; border-top: 1px solid #ddd; margin-top: 16px;';
+      footer.textContent = `Version ${manifest.version}`;
+      overlay.appendChild(footer);
+    }
+  };
+
   // Add backdrop and overlay to DOM
   document.body.appendChild(backdrop);
   document.body.appendChild(overlay);
@@ -1148,6 +1186,9 @@ function createContentOverlay(result) {
       analyzeBtn.innerHTML = '🤖 Analyze with AI';
     });
   });
+
+  // Add build info footer after event listeners are attached
+  addBuildInfoFooter();
 }
 
 /**

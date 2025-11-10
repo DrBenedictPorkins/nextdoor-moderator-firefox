@@ -366,13 +366,43 @@ apiKeyInput.addEventListener('keypress', (e) => {
 });
 
 /**
- * Load and display extension version from manifest
+ * Load and display extension version from build-info.json
  */
-function loadVersion() {
-  const manifest = browser.runtime.getManifest();
-  const versionElement = document.querySelector('.version');
-  if (versionElement && manifest.version) {
-    versionElement.textContent = `Version ${manifest.version}`;
+async function loadVersion() {
+  try {
+    // Load build info from bundled JSON file
+    const buildInfoUrl = browser.runtime.getURL('build-info.json');
+    const response = await fetch(buildInfoUrl);
+    const buildInfo = await response.json();
+
+    const versionElement = document.querySelector('.version');
+    if (versionElement && buildInfo.version) {
+      let versionText = `Version ${buildInfo.version}`;
+
+      // Add build time if available
+      if (buildInfo.buildTime) {
+        const buildDate = new Date(buildInfo.buildTime);
+        const formattedDate = buildDate.toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true
+        });
+        versionText += ` • Built: ${formattedDate}`;
+      }
+
+      versionElement.textContent = versionText;
+    }
+  } catch (error) {
+    console.error('Error loading build info:', error);
+    // Fallback to manifest version only
+    const manifest = browser.runtime.getManifest();
+    const versionElement = document.querySelector('.version');
+    if (versionElement && manifest.version) {
+      versionElement.textContent = `Version ${manifest.version}`;
+    }
   }
 }
 

@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import webExtension from 'vite-plugin-web-extension';
-import { copyFileSync, mkdirSync, readFileSync } from 'fs';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 
 export default defineConfig({
@@ -33,6 +33,20 @@ export default defineConfig({
         });
         console.log('Icons copied to dist/icons/');
       },
+    },
+    {
+      name: 'generate-build-info',
+      closeBundle() {
+        const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
+        const buildInfo = {
+          version: pkg.version,
+          buildTime: new Date().toISOString()
+        };
+
+        const buildInfoPath = resolve(process.cwd(), 'dist/build-info.json');
+        writeFileSync(buildInfoPath, JSON.stringify(buildInfo, null, 2));
+        console.log('Build info generated:', buildInfoPath);
+      }
     },
   ],
   build: {
