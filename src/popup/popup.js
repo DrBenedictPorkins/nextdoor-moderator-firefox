@@ -365,5 +365,17 @@ apiKeyInput.addEventListener('keypress', (e) => {
   }
 });
 
-// Load config on popup open
+/**
+ * Load and display extension version from manifest
+ */
+function loadVersion() {
+  const manifest = browser.runtime.getManifest();
+  const versionElement = document.querySelector('.version');
+  if (versionElement && manifest.version) {
+    versionElement.textContent = `Version ${manifest.version}`;
+  }
+}
+
+// Load config and version on popup open
 loadConfig();
+loadVersion();

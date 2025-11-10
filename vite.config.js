@@ -1,13 +1,21 @@
 import { defineConfig } from 'vite';
 import webExtension from 'vite-plugin-web-extension';
-import { copyFileSync, mkdirSync } from 'fs';
+import { copyFileSync, mkdirSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [
     webExtension({
-      manifest: './manifest.json',
-      watchFilePaths: ['src/**/*', 'icons/**/*'],
+      manifest: () => {
+        const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
+        const manifest = JSON.parse(readFileSync('./manifest.json', 'utf-8'));
+
+        // Sync version from package.json
+        manifest.version = pkg.version;
+
+        return manifest;
+      },
+      watchFilePaths: ['src/**/*', 'icons/**/*', 'package.json', 'manifest.json'],
       browser: 'firefox',
     }),
     {

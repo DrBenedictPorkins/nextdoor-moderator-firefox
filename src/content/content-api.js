@@ -381,8 +381,12 @@ function extractModerationData() {
             return epochA - epochB;
           });
 
-          // Build thread: [parent chain, mentioned comments, flagged comment]
-          const smartThread = [...parentThread, ...uniqueMentionedComments, flaggedComment];
+          // Filter out mentioned comments that are already in parent thread (avoid duplicates)
+          const parentThreadIds = new Set(parentThread.map(c => c.id));
+          const newMentionedComments = uniqueMentionedComments.filter(c => !parentThreadIds.has(c.id));
+
+          // Build thread: [parent chain, new mentioned comments, flagged comment]
+          const smartThread = [...parentThread, ...newMentionedComments, flaggedComment];
 
           console.log('[Content] Smart thread structure (Strategy 1 - with siblings):',
             smartThread.map(c => `${c.author} (depth ${c.depth})`).join(' → '));
