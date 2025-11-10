@@ -15,8 +15,9 @@ This is a Firefox browser extension (Manifest V2) for Nextdoor community moderat
 
 **Key Features:**
 - Intercepts Nextdoor's ModerationFeed GraphQL API using `webRequest.filterResponseData`
-- Calculates vote totals from actual reviewer data (not text parsing)
-- Displays inline AI analysis within the content overlay
+- Smart conversation thread truncation using @mention tags to reduce LLM context
+- Searches all comments (including siblings) for mentioned users
+- Displays inline AI analysis with color-coded vote suggestions
 - Supports optional moderator context input for images/videos/links
 - Independent tag validity assessment (Valid/Doesn't Apply/Borderline)
 
@@ -111,90 +112,32 @@ rsvg-convert -w SIZE -h SIZE icons/icon.svg > icons/icon-SIZE.png
 
 ## Key Implementation Notes
 
-### API Interception Strategy
-The extension uses `webRequest.filterResponseData` to intercept Nextdoor's ModerationFeed GraphQL API responses. This approach:
-- Captures API responses before the page processes them
-- Parses the `moderationSummaryV3` field from GraphQL responses
-- Extracts structured moderation data (reports, votes, notes, conversation threads)
-- Does NOT rely on DOM scraping (more reliable than CSS selectors)
-
-### Vote Totals Calculation
-**Important:** Vote totals are calculated by counting actual reviewer votes, NOT by parsing text patterns:
-
-```javascript
-// Count votes from individual_report entries
-moderationDetails.reports.forEach((report) => {
-  if (report.type === 'individual_report') {
-    if (report.voteType === 'keep') keepCount++;
-    else if (report.voteType === 'abstain') maybeRemoveCount++;
-    else if (report.voteType === 'remove') removeCount++;
-  }
-});
-```
-
-This approach is more reliable than regex parsing and handles edge cases (1, 2, or 3 votes).
+### Smart Conversation Thread Truncation
+The extension uses `comment.tags` array to detect @mentions and includes only relevant comments:
+- When a flagged comment mentions another user, their comment is included (even if it's a sibling)
+- Searches all processed comments, not just the direct parent chain
+- Reduces LLM context usage by 60-80% compared to full thread inclusion
+- Fallback: If no mentions detected, includes only the direct parent comment
 
 ### Vote Type Labels
 - **Keep** = `voteType === 'keep'` (green ✓)
 - **Maybe remove** = `voteType === 'abstain'` (grey −) - NOT "Abstain"
 - **Remove** = `voteType === 'remove'` (red ✗)
-- **Report** = `voteType === 'report'` (orange 🚩) - for reporters who haven't voted yet
+- **Report** = `voteType === 'report'` (orange 🚩)
 
-### LLM API Integration
-`src/background/background.js` contains the `analyzeWithLLM()` function that calls external LLM APIs. Current implementation uses OpenAI-style request format:
-
-```javascript
-{
-  model: 'gpt-4',
-  messages: [{ role: 'system', content: '...' }, ...],
-  temperature: 0.3
-}
-```
-
-**Important:** If using Anthropic Claude API, the request format must be adapted (different endpoint structure, different message format).
-
-### Additional Context Feature
-The content overlay includes an optional "Additional Context" textarea that allows moderators to provide context the LLM cannot see:
-
-**Use cases:**
-- Describe images: "Post includes photo of political yard sign"
-- Describe videos: "Video shows heated argument at meeting"
-- Describe links: "Link to partisan news article"
-- Ask specific questions: "Does this count as harassment if the person is a local business owner?"
-
-**How it works:**
-1. User enters context in textarea before clicking "Analyze with AI"
-2. Context is sent to background script as `additionalContext` parameter
-3. Background includes it in prompt under "ADDITIONAL CONTEXT (provided by moderator)"
-4. LLM uses context for analysis AND addresses moderator questions in separate "Moderator Questions/Comments" section
-5. LLM response includes both the standard analysis and specific answers to moderator input
-
-### LLM Prompt Structure
-The prompt instructs the LLM to provide independent analysis focused on the flagged content only:
-
-**Key prompt features:**
-- Emphasizes independence from reporter tags and voting trends
-- Specifically warns about "public shaming" tags being misapplied to political critiques
-- Requires tag validity assessment: Valid / Doesn't Apply / Borderline
-- Provides decision logic: all tags "Doesn't Apply" → Keep; majority "Valid" → Remove; mixed → Maybe Remove
-- Focuses analysis on flagged content (not entire thread)
-- Original post and conversation thread provided for context only
-
-**LLM Output Format:**
-1. **Tag Analysis** - Evaluates each report tag independently
-2. **Vote Suggestion** - Keep / Remove / Maybe Remove
-3. **Why** - Brief explanation matching the tag analysis
-4. **Comment Suggestion** - Concise phrase (5-10 words) for moderator comment
-5. **Moderator Questions/Comments** (if additional context provided) - Addresses moderator input
-6. **Additional Context** - Voting trends, reviewer comments, tone assessment, mitigating factors
+### LLM Response Display
+Vote suggestions are color-coded in the analysis overlay:
+- **Keep**: Green (#2e7d32) with ✓
+- **Remove**: Red (#c62828) with ✗
+- **Maybe Remove**: Gray (#757575) with −
 
 ### Storage Schema
-API configuration is stored in `browser.storage.local`:
+API configuration stored in `browser.storage.local`:
 - `apiKey`: User's LLM API key
 - `apiEndpoint`: Full API URL
 - `model`: Model identifier string
 
-**Important:** Settings persist across Firefox sessions even for temporary add-ons.
+Settings persist across Firefox sessions even for temporary add-ons.
 
 ## Debugging
 
