@@ -218,11 +218,18 @@ CRITICAL INSTRUCTIONS:
 • Only recommend removal if the content CLEARLY violates specific guidelines
 
 IMPORTANT - FOCUS YOUR ANALYSIS:
-• Your vote should ONLY evaluate the "FLAGGED CONTENT" below
-• The "ORIGINAL POST" and conversation thread are provided for CONTEXT ONLY
-• Do NOT vote on whether the original post or thread violates guidelines
-• ONLY analyze whether the specific flagged content (post or comment) violates guidelines
-• Tags and reports apply to the flagged content, not the entire thread
+- Your vote should ONLY evaluate the "FLAGGED CONTENT" below
+- Do NOT vote on whether other posts/comments in the thread violate guidelines
+- Tags and reports apply ONLY to the flagged content
+
+**If the flagged content is a RESPONSE/COMMENT:**
+- The "RESPONSE RELATIONSHIP" section shows what it's DIRECTLY responding to
+- **CRITICAL**: Analyze the flagged content's tone, intent, and appropriateness specifically in relation to the comment it's responding to
+- Consider: Is this a proportional response? Does it attack the commenter rather than address their point? Is there veiled aggression, sarcasm, or dismissiveness?
+
+**If the flagged content is an ORIGINAL POST:**
+- Analyze it on its own merits against the guidelines
+- The conversation thread (if any) provides context about community reaction but does not affect whether the original post violates guidelines
 
 ${NEXTDOOR_GUIDELINES}
 

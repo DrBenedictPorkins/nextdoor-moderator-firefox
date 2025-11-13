@@ -216,10 +216,18 @@ function extractModerationData() {
     // Use styledBody.text if available (contains full text including title), otherwise fall back to body
     const postContent = post.styledBody?.text || post.body || '';
 
+    // Check for media attachments (images, videos, links)
+    const mediaAttachments = post.mediaAttachments || [];
+    const hasMedia = mediaAttachments.length > 0;
+    const mediaTypes = mediaAttachments.map(m => m.type).join(', '); // e.g., "PHOTO, VIDEO"
+
     const originalPost = {
       id: post.id,
       legacyId: feedItem.legacyAnalyticsId,
       content: postContent,
+      hasMedia: hasMedia,
+      mediaTypes: mediaTypes,
+      mediaCount: mediaAttachments.length,
       author: post.author?.displayName || 'Unknown',
       authorUrl: post.author?.url || '',
       createdAt: post.createdAt?.asDateTime?.relativeTime || '',
@@ -441,7 +449,9 @@ function extractModerationData() {
 
     // Determine what is flagged
     const validation = {
-      hasOriginalPost: !!originalPost.content,
+      hasOriginalPost: !!originalPost.content || originalPost.hasMedia, // Accept posts with media even if no text
+      hasTextContent: !!originalPost.content,
+      hasMediaOnly: originalPost.hasMedia && !originalPost.content,
       postIsFlagged: moderationInfo.hasModerationSummary,
       hasFlaggedComments: flaggedComments.length > 0,
       flaggedCount: (moderationInfo.hasModerationSummary ? 1 : 0) + flaggedComments.length,
@@ -936,11 +946,19 @@ function createContentOverlay(result) {
 
   let contentHTML = '';
 
-  // Validation errors
-  if (!validation.hasOriginalPost) {
+  // Validation: Handle media-only posts
+  if (validation.hasMediaOnly) {
+    contentHTML += `
+      <div style="background: #fff3e0; border: 1px solid #ff9800; border-radius: 4px; padding: 12px; color: #e65100; margin-bottom: 12px;">
+        <strong>⚠️ Media-Only Post:</strong> This post contains ${originalPost.mediaCount} ${originalPost.mediaTypes.toLowerCase()} but no text.
+        <br><br>
+        <strong>⚠️ Required:</strong> You MUST describe the media content in the "Additional Context" field below before analyzing.
+      </div>
+    `;
+  } else if (!validation.hasOriginalPost) {
     contentHTML += `
       <div style="background: #ffebee; border: 1px solid #f44336; border-radius: 4px; padding: 12px; color: #c62828; margin-bottom: 12px;">
-        <strong>Error:</strong> Could not find original post
+        <strong>Error:</strong> Could not find original post content or media
       </div>
     `;
   }
@@ -1011,27 +1029,34 @@ function createContentOverlay(result) {
     <div style="margin-top: 16px; border-top: 2px solid #ddd; padding-top: 16px;">
       <div style="margin-bottom: 12px;">
         <label for="additional-context" style="display: block; font-weight: bold; margin-bottom: 6px; font-size: 13px; color: #555;">
-          Additional Context (optional)
+          Additional Context ${validation.hasMediaOnly ? '<span style="color: #f44336;">*</span>' : '(optional)'}
         </label>
         <textarea
           id="additional-context"
-          placeholder="Describe images, videos, links, or other context not visible in the text (e.g., 'Post includes image of political yard sign' or 'Video shows heated argument')"
+          placeholder="${validation.hasMediaOnly ? 'REQUIRED: Describe the image/video/media content shown in this post...' : 'Describe images, videos, links, or other context not visible in the text (e.g., \'Post includes image of political yard sign\' or \'Video shows heated argument\')'}"
           style="
             width: 100%;
             min-height: 60px;
             max-height: 200px;
             padding: 8px;
-            border: 1px solid #ccc;
+            border: 2px solid ${validation.hasMediaOnly ? '#f44336' : '#ccc'};
             border-radius: 4px;
             font-family: Arial, sans-serif;
             font-size: 13px;
             resize: vertical;
             box-sizing: border-box;
+            ${validation.hasMediaOnly ? 'background: #fff9c4;' : ''}
           "
         ></textarea>
-        <div style="font-size: 11px; color: #666; margin-top: 4px;">
-          This context will be included in the LLM analysis to provide additional information about media or context not visible in the text.
-        </div>
+        ${validation.hasMediaOnly ? `
+          <div style="font-size: 12px; color: #f44336; margin-top: 4px;">
+            <strong>⚠️ This field is REQUIRED</strong> because the post has no text content.
+          </div>
+        ` : `
+          <div style="font-size: 11px; color: #666; margin-top: 4px;">
+            This context will be included in the LLM analysis to provide additional information about media or context not visible in the text.
+          </div>
+        `}
       </div>
       <button id="analyze-btn" style="
         width: 100%;
@@ -1120,6 +1145,22 @@ function createContentOverlay(result) {
 
     // Get additional context from textarea
     const additionalContext = additionalContextTextarea?.value.trim() || '';
+
+    // Validate: For media-only posts, additional context is REQUIRED
+    if (validation.hasMediaOnly && !additionalContext) {
+      analysisContainer.innerHTML = `
+        <div style="background: #ffebee; border: 1px solid #f44336; border-radius: 4px; padding: 12px; color: #c62828;">
+          <strong>Error:</strong> Additional Context is required for media-only posts. Please describe the content of the image/video/media.
+        </div>
+      `;
+      // Flash the textarea border to draw attention
+      additionalContextTextarea.style.border = '2px solid #f44336';
+      additionalContextTextarea.focus();
+      setTimeout(() => {
+        additionalContextTextarea.style.border = '2px solid #f44336';
+      }, 2000);
+      return;
+    }
 
     // Clear existing analysis
     analysisContainer.innerHTML = '';
