@@ -9,7 +9,9 @@
     "*://*.nextdoor.com/*",
     "webRequest",
     "webRequestBlocking",
-    "downloads"
+    "downloads",
+    "*://*.anthropic.com/*",
+    "*://*.openai.com/*"
   ],
   "background": {
     "scripts": ["src/background/background.js"],

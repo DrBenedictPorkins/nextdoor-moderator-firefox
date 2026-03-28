@@ -160,9 +160,42 @@ Defined in `manifest.json` (Manifest V2):
 - `storage` - Local API configuration storage
 - `activeTab` - Access current tab content
 - `*://*.nextdoor.com/*` - Access to Nextdoor domain
+- `*://*.anthropic.com/*` - Anthropic API calls
+- `*://*.openai.com/*` - OpenAI API calls
 - `webRequest` - Intercept network requests
 - `webRequestBlocking` - Block and modify requests
 - `downloads` - Save LLM logs to Downloads folder (when logging enabled)
+
+## Nextdoor Report Reasons & Non-Violations
+
+Sources:
+- https://help.nextdoor.com/s/article/About-moderation?language=en_US
+- https://help.nextdoor.com/s/article/Do-not-engage-in-harmful-activity?language=en_US
+- https://help.nextdoor.com/s/article/Be-respectful-to-your-neighbors?language=en_US
+- https://help.nextdoor.com/s/article/Do-not-discriminate?language=en_US
+- https://help.nextdoor.com/s/article/Best-practices-For-Sale-Free?language=en_US (marketplace rules, not directly in moderation prompt)
+- https://help.nextdoor.com/s/article/Promoting-a-business-or-service-on-Nextdoor?language=en_US (business promotion from personal account is allowed unless posting pattern is spam-like)
+
+Report reasons that **do NOT violate guidelines** (content should not be removed):
+- "Irrelevant or annoying" — reporters should hide/mute instead
+- "Goes against my beliefs, values or politics" — not a violation
+
+Key report reason → guideline mappings:
+- "Non-local topic outside of a group" → Guideline 3 (Politics): non-local topics without a direct local/personal connection belong in neighbour-created groups
+- "Spam" → Guideline 5: fraud or spam (requires pattern of repeated/unsolicited/deceptive behavior — a short opinion is NOT spam)
+- "Misinformation" → Goes to Nextdoor staff, NOT community moderators — LLM should not evaluate misinformation tags
+- "Uncivil or unkind" → Guideline 1: be respectful
+- "Public shaming" → Guideline 1: no public shaming
+- "Racism, sexism, homophobia or other discrimination" → Guideline 2: do not discriminate
+- "National politics or religion" → Guideline 3: discuss in the right place
+
+### LLM Prompt Principles
+- The LLM must evaluate content strictly against the guidelines — not against the moderator's additional context opinions
+- Additional context is for **factual info only** (media descriptions, links) — moderator opinions in the context field must not sway the vote
+- Short/vague/low-effort posts are allowed — the guidelines do not require "substance"
+- "Keep" is the default when in doubt
+- "Maybe Remove" requires citing exact guideline text that might apply
+- Analysis must be consistent across re-runs on the same content
 
 ## Common Modifications
 

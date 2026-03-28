@@ -218,16 +218,22 @@ function extractModerationData() {
 
     // Check for media attachments (images, videos, links)
     const mediaAttachments = post.mediaAttachments || [];
-    const hasMedia = mediaAttachments.length > 0;
-    const mediaTypes = mediaAttachments.map(m => m.type).join(', '); // e.g., "PHOTO, VIDEO"
+    // Check for link/URL attachments (shared posts, external links)
+    const postUrl = post.url || post.link || post.sharedPost?.url || '';
+    const hasLink = !!postUrl || !!post.sharedPost;
+    const hasMedia = mediaAttachments.length > 0 || hasLink;
+    const mediaTypes = [
+      ...mediaAttachments.map(m => m.type),
+      ...(hasLink ? ['LINK'] : [])
+    ].join(', ') || '';
 
     const originalPost = {
       id: post.id,
       legacyId: feedItem.legacyAnalyticsId,
-      content: postContent,
+      content: postContent || (hasLink ? `[Link: ${postUrl || 'shared post'}]` : ''),
       hasMedia: hasMedia,
       mediaTypes: mediaTypes,
-      mediaCount: mediaAttachments.length,
+      mediaCount: mediaAttachments.length + (hasLink ? 1 : 0),
       author: post.author?.displayName || 'Unknown',
       authorUrl: post.author?.url || '',
       createdAt: post.createdAt?.asDateTime?.relativeTime || '',
@@ -506,6 +512,37 @@ function formatAIAnalysis(text) {
   // Replace **bold** with <strong>
   text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
 
+  // Parse markdown tables
+  text = text.replace(/((?:^\|.+\|\s*\n)+)/gm, (tableBlock) => {
+    const rows = tableBlock.trim().split('\n').filter(r => r.trim());
+    if (rows.length < 2) return tableBlock;
+
+    // Check if second row is a separator (|---|---|)
+    const isSeparator = (row) => /^\|[\s\-:|]+\|$/.test(row.trim());
+    const hasSeparator = rows.length >= 2 && isSeparator(rows[1]);
+
+    let tableHtml = '<table style="width:100%; border-collapse:collapse; margin:12px 0; font-size:13px;">';
+
+    rows.forEach((row, idx) => {
+      if (hasSeparator && idx === 1) return; // skip separator row
+      const cells = row.split('|').filter((_, i, arr) => i > 0 && i < arr.length - 1).map(c => c.trim());
+      const isHeader = hasSeparator && idx === 0;
+      const tag = isHeader ? 'th' : 'td';
+      const bgStyle = isHeader ? 'background:#f0f0f0; font-weight:600;' : (idx % 2 === 0 ? 'background:#fafafa;' : '');
+      tableHtml += '<tr>';
+      cells.forEach(cell => {
+        tableHtml += `<${tag} style="border:1px solid #ddd; padding:6px 8px; text-align:left; ${bgStyle}">${cell}</${tag}>`;
+      });
+      tableHtml += '</tr>';
+    });
+
+    tableHtml += '</table>';
+    return tableHtml;
+  });
+
+  // Replace --- horizontal rules
+  text = text.replace(/^---$/gm, '<hr style="border:none; border-top:1px solid #ddd; margin:12px 0;">');
+
   // Split into sections and format
   let html = '';
   const lines = text.split('\n');
@@ -517,17 +554,32 @@ function formatAIAnalysis(text) {
       return;
     }
 
+    // Skip if it's already an HTML element (from table parsing)
+    if (line.startsWith('<table') || line.startsWith('<hr')) {
+      html += line;
+      return;
+    }
+
     // Check if it's a bullet point
-    if (line.startsWith('- ')) {
-      html += `<div style="margin-left: 20px; margin-bottom: 8px;">• ${line.substring(2)}</div>`;
+    if (line.startsWith('- ') || line.startsWith('* ')) {
+      html += `<div style="margin-left: 20px; margin-bottom: 4px;">&bull; ${line.substring(2)}</div>`;
+    }
+    // Check if it's a copyable field (Comment Suggestion or Optional Note)
+    else if (line.match(/^<strong>(Comment Suggestion|Optional Note):<\/strong>/)) {
+      const copyValue = line.replace(/<\/?strong>/g, '').replace(/^(Comment Suggestion|Optional Note):\s*/, '').trim();
+      const btnId = `copy-btn-${Math.random().toString(36).substring(2, 8)}`;
+      html += `<div style="margin-top: 12px; margin-bottom: 4px; font-size: 15px; display: flex; align-items: baseline; gap: 8px;">
+        <span>${line}</span>
+        <button id="${btnId}" data-copy-text="${copyValue.replace(/"/g, '&quot;')}" style="background: none; border: 1px solid #ccc; border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 12px; color: #666; white-space: nowrap; flex-shrink: 0;" title="Copy to clipboard">Copy</button>
+      </div>`;
     }
     // Check if it's a section header (contains strong tag at start)
     else if (line.match(/^<strong>[^<]+:<\/strong>/)) {
-      html += `<div style="margin-top: 16px; margin-bottom: 8px; font-size: 16px;">${line}</div>`;
+      html += `<div style="margin-top: 12px; margin-bottom: 4px; font-size: 15px;">${line}</div>`;
     }
     // Regular paragraph
     else {
-      html += `<div style="margin-bottom: 8px;">${line}</div>`;
+      html += `<div style="margin-bottom: 4px;">${line}</div>`;
     }
   });
 
@@ -895,7 +947,7 @@ function formatModerationDetails(moderationDetails) {
 /**
  * Create Phase 1: Content Display Overlay
  */
-function createContentOverlay(result) {
+async function createContentOverlay(result) {
   if (!result.success) {
     showErrorOverlay(result.error);
     return;
@@ -927,22 +979,87 @@ function createContentOverlay(result) {
   // Create overlay content
   const overlay = document.createElement('div');
   overlay.id = 'nextdoor-moderator-overlay';
+
+  // Load saved size or use defaults
+  const savedSize = await browser.storage.local.get('overlaySize');
+  const overlayW = savedSize.overlaySize?.width || 600;
+  const overlayH = savedSize.overlaySize?.height || null;
+
+  // Outer shell: fixed position, holds resize handle
   overlay.style.cssText = `
     position: fixed;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: 600px;
-    max-height: 80vh;
-    overflow-y: auto;
+    width: ${overlayW}px;
+    ${overlayH ? `height: ${overlayH}px;` : 'max-height: 80vh;'}
     background: white;
     border: 2px solid #4CAF50;
     border-radius: 8px;
-    padding: 20px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     z-index: 10000;
     font-family: Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
   `;
+
+  // Inner scrollable content wrapper
+  const scrollWrapper = document.createElement('div');
+  scrollWrapper.id = 'nextdoor-moderator-scroll';
+  scrollWrapper.style.cssText = `
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    min-height: 0;
+  `;
+
+  // Resize handle - stays visible at bottom-right corner
+  const resizeHandle = document.createElement('div');
+  resizeHandle.style.cssText = `
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    width: 18px;
+    height: 18px;
+    cursor: nwse-resize;
+    z-index: 10001;
+    background: linear-gradient(135deg, transparent 50%, #999 50%, transparent 55%, #999 60%, transparent 65%, #999 70%);
+    opacity: 0.5;
+    border-radius: 0 0 6px 0;
+  `;
+  resizeHandle.addEventListener('mouseenter', () => { resizeHandle.style.opacity = '1'; });
+  resizeHandle.addEventListener('mouseleave', () => { resizeHandle.style.opacity = '0.5'; });
+  overlay.appendChild(resizeHandle);
+
+  let resizing = false, rStartX, rStartY, rStartW, rStartH;
+  resizeHandle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizing = true;
+    rStartX = e.clientX;
+    rStartY = e.clientY;
+    rStartW = overlay.offsetWidth;
+    rStartH = overlay.offsetHeight;
+    overlay.style.userSelect = 'none';
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!resizing) return;
+    const dx = e.clientX - rStartX;
+    const dy = e.clientY - rStartY;
+    const newW = Math.max(400, Math.min(1200, rStartW + dx * 2));
+    const newH = Math.max(300, rStartH + dy * 2);
+    overlay.style.width = newW + 'px';
+    overlay.style.height = newH + 'px';
+    overlay.style.maxHeight = 'none';
+  });
+  document.addEventListener('mouseup', () => {
+    if (!resizing) return;
+    resizing = false;
+    overlay.style.userSelect = '';
+    browser.storage.local.set({
+      overlaySize: { width: overlay.offsetWidth, height: overlay.offsetHeight }
+    });
+  });
 
   let contentHTML = '';
 
@@ -1020,7 +1137,7 @@ function createContentOverlay(result) {
     `;
   }
 
-  overlay.innerHTML = `
+  scrollWrapper.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
       <h3 style="margin: 0; color: #333;">Content Review (API Data)</h3>
       <button id="close-overlay" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #666;">&times;</button>
@@ -1102,7 +1219,7 @@ function createContentOverlay(result) {
       }
 
       footer.textContent = footerText;
-      overlay.appendChild(footer);
+      scrollWrapper.appendChild(footer);
     } catch (error) {
       console.error('Error loading build info:', error);
       // Fallback: show version only from manifest
@@ -1110,11 +1227,12 @@ function createContentOverlay(result) {
       const footer = document.createElement('div');
       footer.style.cssText = 'text-align: center; padding: 8px; color: #999; font-size: 11px; border-top: 1px solid #ddd; margin-top: 16px;';
       footer.textContent = `Version ${manifest.version}`;
-      overlay.appendChild(footer);
+      scrollWrapper.appendChild(footer);
     }
   };
 
-  // Add backdrop and overlay to DOM
+  // Add scrollWrapper into overlay, then add to DOM
+  overlay.insertBefore(scrollWrapper, resizeHandle);
   document.body.appendChild(backdrop);
   document.body.appendChild(overlay);
 
@@ -1543,6 +1661,15 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
             ${formattedAnalysis}
           </div>
         `;
+        // Attach copy button handlers
+        analysisContainer.querySelectorAll('[data-copy-text]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            navigator.clipboard.writeText(btn.dataset.copyText).then(() => {
+              btn.textContent = 'Copied!';
+              setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+            });
+          });
+        });
       } else {
         console.error('[Content] No analysisText in message:', message);
         analysisContainer.innerHTML = `

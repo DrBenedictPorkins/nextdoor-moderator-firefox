@@ -13,8 +13,15 @@ const validationStatus = document.getElementById('validation-status');
 
 // Model configuration for each provider
 const PROVIDER_MODELS = {
-  'openai': ['gpt-4o', 'o1'],
-  'anthropic': ['claude-sonnet-4', 'claude-opus-4']
+  'openai': [
+    { value: 'gpt-4o', label: 'GPT-4o' },
+    { value: 'o1', label: 'o1' }
+  ],
+  'anthropic': [
+    { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+    { value: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
+    { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' }
+  ]
 };
 
 // Endpoint configuration for each provider
@@ -49,8 +56,8 @@ function populateModels(provider) {
   const models = PROVIDER_MODELS[provider];
   models.forEach(model => {
     const option = document.createElement('option');
-    option.value = model;
-    option.textContent = model;
+    option.value = model.value;
+    option.textContent = model.label;
     modelSelect.appendChild(option);
   });
 }
@@ -124,6 +131,7 @@ async function validateApiKey(endpoint, apiKey, model) {
   if (isAnthropicEndpoint) {
     headers['x-api-key'] = apiKey;
     headers['anthropic-version'] = '2023-06-01';
+    headers['anthropic-dangerous-direct-browser-access'] = 'true';
   } else {
     headers['Authorization'] = `Bearer ${apiKey}`;
   }
