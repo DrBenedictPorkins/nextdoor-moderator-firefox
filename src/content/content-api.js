@@ -9,6 +9,54 @@ console.log('[Nextdoor Moderator] Content script loaded (API mode)');
 let moderationFeedData = null;
 let dataIsValid = false;
 
+// --- Post review data persistence (7-day TTL) ---
+const REVIEW_STORAGE_PREFIX = 'nd_review_';
+const REVIEW_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+function getReviewStorageKey(postId) {
+  return `${REVIEW_STORAGE_PREFIX}${postId}`;
+}
+
+async function savePostReview(postId, data) {
+  if (!postId) return;
+  const record = {
+    ...data,
+    savedAt: Date.now(),
+    expiresAt: Date.now() + REVIEW_TTL_MS,
+  };
+  await browser.storage.local.set({ [getReviewStorageKey(postId)]: record });
+}
+
+async function loadPostReview(postId) {
+  if (!postId) return null;
+  const key = getReviewStorageKey(postId);
+  const result = await browser.storage.local.get(key);
+  const record = result[key];
+  if (!record) return null;
+  if (Date.now() > record.expiresAt) {
+    await browser.storage.local.remove(key);
+    return null;
+  }
+  return record;
+}
+
+async function clearPostReview(postId) {
+  if (!postId) return;
+  await browser.storage.local.remove(getReviewStorageKey(postId));
+}
+
+// Purge expired review records on load
+(async function purgeExpiredReviews() {
+  const all = await browser.storage.local.get(null);
+  const expired = Object.keys(all).filter(k =>
+    k.startsWith(REVIEW_STORAGE_PREFIX) && all[k].expiresAt && Date.now() > all[k].expiresAt
+  );
+  if (expired.length > 0) {
+    await browser.storage.local.remove(expired);
+    console.log(`[Nextdoor Moderator] Purged ${expired.length} expired review records`);
+  }
+})();
+
 /**
  * Parse moderationSummaryV3 to extract human-readable details
  */
@@ -218,6 +266,8 @@ function extractModerationData() {
 
     // Check for media attachments (images, videos, links)
     const mediaAttachments = post.mediaAttachments || [];
+    const imageUrls = mediaAttachments.filter(m => m.type === 'PHOTO').map(m => m.url).filter(Boolean);
+    const videoCount = mediaAttachments.filter(m => m.type === 'VIDEO').length;
     // Check for link/URL attachments (shared posts, external links)
     const postUrl = post.url || post.link || post.sharedPost?.url || '';
     const hasLink = !!postUrl || !!post.sharedPost;
@@ -234,6 +284,8 @@ function extractModerationData() {
       hasMedia: hasMedia,
       mediaTypes: mediaTypes,
       mediaCount: mediaAttachments.length + (hasLink ? 1 : 0),
+      imageUrls: imageUrls,
+      videoCount: videoCount,
       author: post.author?.displayName || 'Unknown',
       authorUrl: post.author?.url || '',
       createdAt: post.createdAt?.asDateTime?.relativeTime || '',
@@ -458,6 +510,7 @@ function extractModerationData() {
       hasOriginalPost: !!originalPost.content || originalPost.hasMedia, // Accept posts with media even if no text
       hasTextContent: !!originalPost.content,
       hasMediaOnly: originalPost.hasMedia && !originalPost.content,
+      hasVideos: originalPost.videoCount > 0,
       postIsFlagged: moderationInfo.hasModerationSummary,
       hasFlaggedComments: flaggedComments.length > 0,
       flaggedCount: (moderationInfo.hasModerationSummary ? 1 : 0) + flaggedComments.length,
@@ -955,6 +1008,10 @@ async function createContentOverlay(result) {
 
   const { data } = result;
   const { originalPost, flaggedContent, validation } = data;
+  const postId = flaggedContent?.id || flaggedContent?.legacyId || originalPost.id || originalPost.legacyId;
+
+  // Load any saved review data for this post
+  const savedReview = await loadPostReview(postId);
 
   // Remove any existing overlays
   const existingBackdrop = document.getElementById('nextdoor-moderator-backdrop');
@@ -979,6 +1036,8 @@ async function createContentOverlay(result) {
   // Create overlay content
   const overlay = document.createElement('div');
   overlay.id = 'nextdoor-moderator-overlay';
+  overlay.dataset.postId = postId || '';
+  overlay.dataset.reviewData = JSON.stringify(data);
 
   // Load saved size or use defaults
   const savedSize = await browser.storage.local.get('overlaySize');
@@ -1140,32 +1199,42 @@ async function createContentOverlay(result) {
   scrollWrapper.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
       <h3 style="margin: 0; color: #333;">Content Review (API Data)</h3>
-      <button id="close-overlay" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #666;">&times;</button>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <button id="copy-all-btn" style="background: none; border: 1px solid #bbb; border-radius: 4px; padding: 3px 10px; font-size: 12px; color: #555; cursor: pointer;" title="Copy post tree + AI decision to clipboard">Copy All</button>
+        <button id="close-overlay" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #666;">&times;</button>
+      </div>
     </div>
     ${contentHTML}
     <div style="margin-top: 16px; border-top: 2px solid #ddd; padding-top: 16px;">
       <div style="margin-bottom: 12px;">
-        <label for="additional-context" style="display: block; font-weight: bold; margin-bottom: 6px; font-size: 13px; color: #555;">
-          Additional Context ${validation.hasMediaOnly ? '<span style="color: #f44336;">*</span>' : '(optional)'}
-        </label>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <label for="additional-context" style="font-weight: bold; font-size: 13px; color: #555;">
+            Additional Context ${(validation.hasMediaOnly || validation.hasVideos) ? '<span style="color: #f44336;">*</span>' : '(optional)'}
+          </label>
+          <button id="clear-context-btn" style="background: none; border: 1px solid #ccc; border-radius: 4px; padding: 2px 8px; font-size: 11px; color: #999; cursor: pointer; display: ${savedReview?.additionalContext ? 'inline-block' : 'none'};" title="Clear saved context">Clear</button>
+        </div>
         <textarea
           id="additional-context"
-          placeholder="${validation.hasMediaOnly ? 'REQUIRED: Describe the image/video/media content shown in this post...' : 'Describe images, videos, links, or other context not visible in the text (e.g., \'Post includes image of political yard sign\' or \'Video shows heated argument\')'}"
+          placeholder="${validation.hasVideos ? 'REQUIRED: Describe the video content shown in this post...' : validation.hasMediaOnly ? 'REQUIRED: Describe the image/video/media content shown in this post...' : 'Describe images, videos, links, or other context not visible in the text (e.g., \'Post includes image of political yard sign\' or \'Video shows heated argument\')'}"
           style="
             width: 100%;
             min-height: 60px;
             max-height: 200px;
             padding: 8px;
-            border: 2px solid ${validation.hasMediaOnly ? '#f44336' : '#ccc'};
+            border: 2px solid ${(validation.hasMediaOnly || validation.hasVideos) ? '#f44336' : '#ccc'};
             border-radius: 4px;
             font-family: Arial, sans-serif;
             font-size: 13px;
             resize: vertical;
             box-sizing: border-box;
-            ${validation.hasMediaOnly ? 'background: #fff9c4;' : ''}
+            ${(validation.hasMediaOnly || validation.hasVideos) ? 'background: #fff9c4;' : ''}
           "
         ></textarea>
-        ${validation.hasMediaOnly ? `
+        ${validation.hasVideos ? `
+          <div style="font-size: 12px; color: #f44336; margin-top: 4px;">
+            <strong>⚠️ This field is REQUIRED</strong> — this post contains video that cannot be sent to the AI. Please describe what the video shows.
+          </div>
+        ` : validation.hasMediaOnly ? `
           <div style="font-size: 12px; color: #f44336; margin-top: 4px;">
             <strong>⚠️ This field is REQUIRED</strong> because the post has no text content.
           </div>
@@ -1236,8 +1305,51 @@ async function createContentOverlay(result) {
   document.body.appendChild(backdrop);
   document.body.appendChild(overlay);
 
-  // Remove function for cleanup
-  const removeOverlay = () => {
+  // Restore saved additional context
+  const additionalContextTextarea = overlay.querySelector('#additional-context');
+  if (savedReview?.additionalContext && additionalContextTextarea) {
+    additionalContextTextarea.value = savedReview.additionalContext;
+  }
+
+  // Restore saved AI analysis with cache banner
+  const analysisContainer = overlay.querySelector('#ai-analysis-container');
+  if (savedReview?.analysisHtml && analysisContainer) {
+    analysisContainer.innerHTML = `
+      <div id="cache-banner" style="background: #e3f2fd; border: 1px solid #90caf9; border-radius: 4px; padding: 8px 12px; margin-bottom: 8px; font-size: 12px; color: #1565c0; display: flex; justify-content: space-between; align-items: center;">
+        <span>Previously generated analysis (restored from cache)</span>
+        <button id="dismiss-cache-banner" style="background: none; border: none; cursor: pointer; color: #1565c0; font-size: 14px;">&times;</button>
+      </div>
+    ` + savedReview.analysisHtml;
+    // Dismiss banner handler
+    analysisContainer.querySelector('#dismiss-cache-banner')?.addEventListener('click', () => {
+      analysisContainer.querySelector('#cache-banner')?.remove();
+    });
+    // Re-attach copy button handlers
+    analysisContainer.querySelectorAll('[data-copy-text]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        navigator.clipboard.writeText(btn.dataset.copyText).then(() => {
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+        });
+      });
+    });
+    // Scroll cached analysis into view after overlay is added to DOM
+    requestAnimationFrame(() => analysisContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+  }
+
+  // Save function — captures current state
+  const saveCurrentState = async () => {
+    const ctx = additionalContextTextarea?.value.trim() || '';
+    const analysisEl = overlay.querySelector('#ai-analysis-container');
+    const html = analysisEl?.innerHTML || '';
+    if (ctx || html) {
+      await savePostReview(postId, { additionalContext: ctx, analysisHtml: html });
+    }
+  };
+
+  // Remove function for cleanup (saves before closing)
+  const removeOverlay = async () => {
+    await saveCurrentState();
     backdrop.remove();
     overlay.remove();
   };
@@ -1248,6 +1360,87 @@ async function createContentOverlay(result) {
 
   // Click outside to close (click on backdrop)
   backdrop.addEventListener('click', removeOverlay);
+
+  // Clear context button
+  const clearBtn = overlay.querySelector('#clear-context-btn');
+  clearBtn?.addEventListener('click', async () => {
+    if (additionalContextTextarea) additionalContextTextarea.value = '';
+    clearBtn.style.display = 'none';
+    await clearPostReview(postId);
+  });
+
+  // Copy All button handler
+  const copyAllBtn = overlay.querySelector('#copy-all-btn');
+  copyAllBtn?.addEventListener('click', () => {
+    const reviewData = JSON.parse(overlay.dataset.reviewData || '{}');
+    const { originalPost, flaggedContent } = reviewData;
+    const lines = [];
+
+    lines.push('=== ORIGINAL POST ===');
+    lines.push(`Author: ${originalPost?.author || 'Unknown'}`);
+    if (originalPost?.createdAt) lines.push(`Posted: ${originalPost.createdAt}`);
+    lines.push(originalPost?.content || '(no text)');
+    if (originalPost?.imageUrls?.length > 0) {
+      originalPost.imageUrls.forEach(url => lines.push(`[Image: ${url}]`));
+    }
+
+    const thread = flaggedContent?.conversationThread;
+    if (thread && thread.length > 0) {
+      lines.push('');
+      lines.push('=== CONVERSATION THREAD ===');
+      thread.forEach(c => {
+        const indent = '  '.repeat(c.depth || 0);
+        lines.push(`${indent}[${c.author}]: ${c.content}`);
+      });
+    }
+
+    lines.push('');
+    lines.push('=== FLAGGED CONTENT ===');
+    if (flaggedContent?.type === 'post') {
+      lines.push('(Original post is flagged)');
+    } else {
+      lines.push(`Author: ${flaggedContent?.author || 'Unknown'}`);
+      if (flaggedContent?.createdAt) lines.push(`Posted: ${flaggedContent.createdAt}`);
+      lines.push(flaggedContent?.content || '(no text)');
+    }
+    const mod = flaggedContent?.moderationDetails;
+    if (mod?.tags?.length) lines.push(`Tags: ${mod.tags.map(t => `${t.reason} (${t.reporter})`).join(', ')}`);
+    if (mod?.votes) {
+      const v = mod.votes;
+      lines.push(`Votes: Keep ${v.keep || 0} / Remove ${v.remove || 0} / Maybe Remove ${v.abstain || 0} / Report ${v.report || 0}`);
+    }
+    if (mod?.reviewerNotes?.length) {
+      lines.push('Reporter notes:');
+      mod.reviewerNotes.forEach(n => lines.push(`  - ${n}`));
+    }
+
+    const ctx = overlay.querySelector('#additional-context')?.value?.trim();
+    if (ctx) {
+      lines.push('');
+      lines.push('=== ADDITIONAL CONTEXT ===');
+      lines.push(ctx);
+    }
+
+    const analysisText = overlay.querySelector('#ai-analysis-container')?.innerText?.trim();
+    if (analysisText) {
+      lines.push('');
+      lines.push('=== AI ANALYSIS ===');
+      lines.push(analysisText);
+    }
+
+    navigator.clipboard.writeText(lines.join('\n')).then(() => {
+      copyAllBtn.textContent = 'Copied!';
+      setTimeout(() => { copyAllBtn.textContent = 'Copy All'; }, 1500);
+    });
+  });
+
+  // Show clear button when context is typed
+  additionalContextTextarea?.addEventListener('input', () => {
+    const clearBtnEl = overlay.querySelector('#clear-context-btn');
+    if (clearBtnEl) {
+      clearBtnEl.style.display = additionalContextTextarea.value.trim() ? 'inline-block' : 'none';
+    }
+  });
 
   // Prevent clicks inside overlay from closing it
   overlay.addEventListener('click', (e) => {
@@ -1264,19 +1457,18 @@ async function createContentOverlay(result) {
     // Get additional context from textarea
     const additionalContext = additionalContextTextarea?.value.trim() || '';
 
-    // Validate: For media-only posts, additional context is REQUIRED
-    if (validation.hasMediaOnly && !additionalContext) {
+    // Validate: For media-only or video posts, additional context is REQUIRED
+    if ((validation.hasMediaOnly || validation.hasVideos) && !additionalContext) {
+      const msg = validation.hasVideos
+        ? 'Additional Context is required for posts with video. Please describe what the video shows.'
+        : 'Additional Context is required for media-only posts. Please describe the content of the image/video/media.';
       analysisContainer.innerHTML = `
         <div style="background: #ffebee; border: 1px solid #f44336; border-radius: 4px; padding: 12px; color: #c62828;">
-          <strong>Error:</strong> Additional Context is required for media-only posts. Please describe the content of the image/video/media.
+          <strong>Error:</strong> ${msg}
         </div>
       `;
-      // Flash the textarea border to draw attention
       additionalContextTextarea.style.border = '2px solid #f44336';
       additionalContextTextarea.focus();
-      setTimeout(() => {
-        additionalContextTextarea.style.border = '2px solid #f44336';
-      }, 2000);
       return;
     }
 
@@ -1305,7 +1497,7 @@ async function createContentOverlay(result) {
       document.head.appendChild(style);
     }
 
-    // Send to background script with additional context
+    // Send to background script with additional context and image URLs
     browser.runtime.sendMessage({
       action: 'analyzeContent',
       data: {
@@ -1313,6 +1505,7 @@ async function createContentOverlay(result) {
         flaggedContent: data.flaggedContent,
         conversationThread: data.flaggedContent?.conversationThread || [],
         additionalContext: additionalContext,
+        imageUrls: data.originalPost?.imageUrls || [],
       },
     }).then((response) => {
       console.log('[Content] Analysis request response:', response);
@@ -1661,6 +1854,10 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
             ${formattedAnalysis}
           </div>
         `;
+        // Remove cache banner if present (this is fresh analysis)
+        analysisContainer.querySelector('#cache-banner')?.remove();
+        // Scroll into view
+        analysisContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         // Attach copy button handlers
         analysisContainer.querySelectorAll('[data-copy-text]').forEach(btn => {
           btn.addEventListener('click', () => {
@@ -1670,6 +1867,13 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
             });
           });
         });
+        // Save analysis to localStorage
+        const overlayEl = document.querySelector('#nextdoor-moderator-overlay');
+        const pid = overlayEl?.dataset?.postId;
+        if (pid) {
+          const ctx = document.querySelector('#additional-context')?.value?.trim() || '';
+          savePostReview(pid, { additionalContext: ctx, analysisHtml: analysisContainer.innerHTML });
+        }
       } else {
         console.error('[Content] No analysisText in message:', message);
         analysisContainer.innerHTML = `

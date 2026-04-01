@@ -175,6 +175,7 @@ Sources:
 - https://help.nextdoor.com/s/article/Do-not-discriminate?language=en_US
 - https://help.nextdoor.com/s/article/Best-practices-For-Sale-Free?language=en_US (marketplace rules, not directly in moderation prompt)
 - https://help.nextdoor.com/s/article/Promoting-a-business-or-service-on-Nextdoor?language=en_US (business promotion from personal account is allowed unless posting pattern is spam-like)
+- Full moderator guidelines compiled in `resources/nextdoor-moderator-guidelines.md`
 
 Report reasons that **do NOT violate guidelines** (content should not be removed):
 - "Irrelevant or annoying" — reporters should hide/mute instead
@@ -188,6 +189,15 @@ Key report reason → guideline mappings:
 - "Public shaming" → Guideline 1: no public shaming
 - "Racism, sexism, homophobia or other discrimination" → Guideline 2: do not discriminate
 - "National politics or religion" → Guideline 3: discuss in the right place
+
+### Key Moderation Rules
+- Voting to remove content that does NOT violate guidelines is itself a policy violation
+- "Maybe remove" = moderator is not sure how to handle the post (per Nextdoor's official definition)
+- Sensitive reports (misinformation, discrimination, racial profiling) go to Nextdoor Support, not community moderators
+- Do not remove old or expired posts — the newsfeed is an archive
+- Local politics allowed in main feed and groups; national politics/federal policy/international issues are NOT ALLOWED anywhere (not in main feed, not in groups)
+- "Local" = affects local community or state; "National" = extends beyond local area
+- Local candidates can introduce themselves in main feed; follow-up campaign content goes to groups
 
 ### LLM Prompt Principles
 - The LLM must evaluate content strictly against the guidelines — not against the moderator's additional context opinions

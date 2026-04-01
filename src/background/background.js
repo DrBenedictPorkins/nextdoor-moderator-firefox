@@ -18,90 +18,225 @@ const CONFIG = {
 // Nextdoor Community Guidelines (simplified - expand as needed)
 const NEXTDOOR_GUIDELINES = `
 ## Nextdoor Community Guidelines
-
-### Be respectful to your neighbors
-Treat others the way you’d want to be treated. It’s okay to disagree, but always keep it respectful and focus on ideas — not personal attacks.
-**Civil conversations:**
-- Stating your opinion or disagreeing in a civil and respectful manner IS ALLOWED
-- Attacking, berating, bullying, belittling, insulting, harassing, threatening, trolling, or swearing at others is NOT allowed
-- Continuing to contact a neighbor after they’ve asked you to stop is NOT allowed
-- Posting complaints about moderation in the main feed is NOT allowed
-**No public shaming:** Posts, images, videos or other media published with the clear intent to shame another person or group are disallowed.
-**What’s allowed:**
-- Posting about safety concerns or other local misconduct
-- Posting a negative review of a local business based on direct personal experience
-- Posting a photo of someone’s license plate to alert the driver of a potential parking violation
-**What’s not allowed:**
-- Disparaging comments about a crime victim or insinuating victim responsibility
-- Name-calling, personal attacks, libel or slander of a business
-- Geo-tagging a neighbour’s home without their knowledge
-- Posting a photo of someone’s license plate to humiliate them
-**Special note about people experiencing homelessness:**
-While it is permissible to share photos/videos and express concern for local safety or conditions, posts or comments that shame or humiliate people experiencing homelessness may be removed.
+Source: https://help.nextdoor.com/s/article/community-guidelines?language=en_US
 
 ---
 
-### Do not discriminate
-Racism, hate speech and/or discrimination of any kind is expressly prohibited.
-**Protected/marginalized groups include:** People grouped by actual or perceived race, color, ethnicity, age, immigration status, national origin, religion or faith, sex or gender identity, sexual orientation, housing or socio-economic status, disability or medical condition, weight or size, and veteran status.
-**Prohibited:**
-- Discriminating against, threatening, or insulting others based on membership in a protected group
-- Racial profiling — assuming someone is suspicious because of their race or ethnicity
-- Using slurs, derogatory racial terms, or dehumanizing language (e.g., “illegals,” “illegal aliens,” “aliens” for non-citizens; racial code words like “thug” or “Oriental”; derogatory terms like “scum” or “animals” for people with criminal history)
-- Negative stereotypes, caricatures, generalizations, offensive imagery or memes about a group
-- Denying someone's gender identity or sexual orientation, promoting conversion therapy
-- Mocking or attacking beliefs, sacred symbols, movements, or institutions of marginalized groups
-- Showing support for hate groups or promoting hate-based conspiracy theories
-- “All Lives Matter” when used to diminish racial equality efforts
-- “Blue Lives Matter” when used to diminish racial equality efforts (honouring law enforcement is OK when respectful)
-- “White Lives Matter” — associated with white-supremacist groups
-- Homophobia, biphobia, transphobia, or mistreatment based on identity
-**Allowed:**
-- Disagreeing on policy or tactics related to equality movements IS allowed — only posts meant to undermine core messages of equality are prohibited
-- Discussions supporting racial justice (BLM, Stop Asian Hate, civil rights) are welcome
+## GUIDELINE 1: BE RESPECTFUL TO YOUR NEIGHBORS
+Source: https://help.nextdoor.com/s/article/Be-respectful-to-your-neighbors?language=en_US
+
+On Nextdoor, your neighbors are real people—living right down the street or around the block. The way we speak with each other shapes our communities. When conversations stay civil and constructive, everyone benefits.
+
+### Civil conversations
+
+Nextdoor is a place for open conversations about what matters in your neighborhood. It’s okay to disagree, but always keep it respectful and focus on ideas—not personal attacks. This is how we build stronger communities together.
+
+NOT ALLOWED:
+- Attacking, berating, bullying, belittling, insulting, harassing, threatening, trolling, or swearing at others or their views even if you strongly disagree. This includes communication within a group or direct message and any communication (including email) directed toward Nextdoor employees, vendors, or agents.
+- Posting complaints about moderation (such as reported, hidden, or removed content) in the main feed
+- Continuing to contact a neighbor after they’ve asked you to stop
+
+ALLOWED:
+- Stating your opinion or disagreeing in a civil and respectful manner
+- Using direct messages or meeting in person to resolve personal disputes amicably
+
+### Public shaming
+
+Public shaming has no place on Nextdoor. Whether it’s directly or indirectly targeting a neighbor, a public figure, or the victim of a crime, shaming others is harmful and uncivil.
+
+IMPORTANT:
+- If you’re concerned about illegal activity, contact your local law enforcement or other appropriate agency.
+- Before posting, consider how your words might affect those you’re posting about, who may also be neighbors on Nextdoor.
+- We may remove a post if contacted by an involved party. This includes parents/guardians of minors.
+
+ALLOWED:
+- Posting about a safety concern in your neighborhood when you do not know the person involved or how to contact them, provided that you are civil and respectful
+- Posting a negative review of a service provider as long as it’s civil and describes your own personal experience
+
+NOT ALLOWED:
+- Writing disparagingly about the victim of a crime or suggesting they are to blame
+- Posting a negative review of a service provider that includes personal attacks, public shaming, libel or name calling
+- Geo-tagging someone’s home location without their knowledge or permission for the purposes of humiliation, shaming, or complaining
 
 ---
 
-### Discuss important topics in the right place  
-Real-world impact often begins in the local community — Nextdoor is the place for neighbours to discuss these topics in a kind and community-oriented way.  
-**Politics:**  
-Discussions about non-local topics (national partisan politics or international geopolitical issues) without a direct local or personal connection may only take place in neighbour-created groups. They may appear in the main feed *ONLY* if there is a direct local connection or personal experience and all other guidelines are met.  
-**Religion:**  
-Discussions about religion must take place in neighbour-created groups. Posts or comments referencing religion in the main newsfeed are subject to removal unless they have a direct local or personal connection.
+## GUIDELINE 2: DO NOT DISCRIMINATE
+Source: https://help.nextdoor.com/s/article/Do-not-discriminate?language=en_US
+
+Nextdoor is for all neighbors, and every neighbor should feel that they are welcome. Racism, hateful language, and discrimination of any kind have no place in our neighborhoods—online or off.
+
+### Zero tolerance for discrimination and hate
+
+Prohibited behaviors — Racism, discrimination, or insults:
+- Discriminating against, threatening, or insulting others (including public figures) based on their membership in a protected or marginalized group. Protected and marginalized groups include: People grouped together based on their actual or perceived race, color, ethnicity, age, immigration status, national origin, religion or faith, sex or gender identity, sexual orientation, housing or socio-economic status, disability or medical condition, weight or size, and veteran status.
+- Assuming that someone is engaged in suspicious activity or criminal behavior because of their race or ethnicity
+- Using negative stereotypes, caricatures, or generalizations about a group—including offensive imagery or memes
+- Using slurs, profanity, derogatory racial terms, or other language that reduces an individual’s humanity. This includes the use of the dehumanizing terms, “illegals,” “illegal aliens,” or “aliens” to refer to non-citizens, the use of racial code words (e.g., “Thug” or “Oriental”), as well as the use of derogatory language to refer to people who have a criminal history (e.g., “scum” or “animals”).
+- Denying an individual’s gender identity or sexual orientation, or promoting support for conversion therapy and related programs.
+- Mocking or attacking the beliefs, sacred symbols, movements, or institutions of marginalized or protected groups
+
+Prohibited behaviors — Hate speech, violence, or threats:
+- Showing or eliciting support for hate groups or people promoting hate
+- Promoting hate-based conspiracy theories or misinformation (e.g., Holocaust denial or “Antifa is invading the suburbs”)
+- Suggesting, showing, threatening, or glorifying violence—even as a joke—against anyone
+- Attempting to condone or trivialize violence against others—even inadvertently (e.g., “Yeah, but that person is a criminal”)
+
+### Support for equality
+
+- “All Lives Matter” is prohibited when used to dismiss or diminish movements for racial equality.
+- “Blue Lives Matter” is allowed when honoring, celebrating, or thanking police for their work in the community—but prohibited when used to diminish racial equality or the Black Lives Matter movement.
+- “White Lives Matter” is prohibited, as this phrase is most commonly associated with white supremacist groups.
+- Homophobia, biphobia, transphobia, or any mistreatment based on identity are strictly prohibited.
+- Discussions in support of racial equality—such as Black Lives Matter, Stop Asian Hate, and other civil rights movements—are welcome on Nextdoor as long as they follow the Community Guidelines.
+- It’s okay to disagree on policy or tactics, but posts or comments meant to undermine core messages of equality are not allowed.
 
 ---
 
-### Use your true identity  
-Every neighbour should use their real name and a confirmed address. Accounts that mis-represent identity may be reviewed or removed.  
-Note: Moderators may not have the ability to view verification status or force removal of accounts — these issues go through Nextdoor Support.
+## GUIDELINE 3: DISCUSS IMPORTANT TOPICS IN THE RIGHT PLACE
+Source: https://help.nextdoor.com/s/article/Be-helpful-in-conversations?language=en_US
+
+Nextdoor is where neighbors connect over what matters most to their local community. For important topics like non-local politics and religion, we offer Groups designed for thoughtful discussion.
+
+### Politics
+
+ALLOWED IN MAIN FEED AND GROUPS:
+- Sharing local events, or peaceful rallies and protests that you support or plan to attend
+- Sharing how a societal issue affects or has personally impacted you or your community
+- Stating why you support a local cause or a local, state, or district candidate. Note: Local candidates may introduce themselves in the main feed, but may not campaign or share ongoing campaign updates there.
+- Sharing ways neighbors can get involved in local causes or civic action, like voting or volunteering
+
+NOT ALLOWED IN MAIN FEED (allowed only in Groups):
+- Sharing or reposting campaign updates, including, but not limited to: endorsement announcements, fundraising or merchandise updates, or requests for donations or assistance
+
+NOT ALLOWED IN MAIN FEED OR GROUPS:
+- Sharing non-local content about national politics, federal policy, or international issues
+
+### Religion
+
+Religious discussions should take place in neighbor-created Groups.
+
+### Fundraising
+
+ALLOWED IN MAIN FEED AND GROUPS:
+- School fundraisers, including links to school or teacher wishlists
+- Community youth organizations
+- Local pet rescue, arts organizations, fundraising events, food banks, and charity walks/runs
+- Local disaster relief or emergency assistance for neighbors, including food assistance
+- Kids’ bake sales, lemonade stands, and similar youth efforts
+
+NOT ALLOWED IN MAIN FEED OR GROUPS:
+- Requesting monetary donations for personal expenses or business needs, including the needs of household members and pets
+- Requesting donations for non-local causes
+- Requesting donations for political candidates
 
 ---
 
-### Do not engage in harmful activity
-Any activity that could hurt someone — from physical harm to scams — is strictly prohibited.
-**Threats of violence (even in jest):**
-Threatening harm toward another neighbour or group of people (e.g., thieves, people experiencing homelessness) is not acceptable.
-**Gun violence / weapons:**
-It is against the Member Agreement to use Nextdoor to sell weapons or ammunition. Threatening gun violence (even out of frustration or jest) is prohibited.
-**Illicit or dangerous actions:**
-Encouraging or facilitating illegal or dangerous actions is disallowed.
-**No fraud, spam or prohibited goods and services:**
-Spam means unwanted, unsolicited, and/or repeated actions that negatively affect neighbors. This includes:
-- Sending large amounts of unsolicited direct messages
-- Repeatedly posting the same or similar content
-- Posting unoriginal/templated content with no personalization
-- Posts that are grammatically incorrect, use all caps, rely on a variety of hashtags, @mentions, emojis, or contain only a link without context
-- Posting more than one promotional post per week from a personal account
-NOTE: A short opinion post is NOT spam. Spam requires a pattern of repeated/unsolicited/deceptive behavior.
-**No graphic, violent, sexually explicit, or adult content.**
-**No violations of privacy:** Don't share personal information without permission.
-**Misinformation:** Reports about misinformation go to Nextdoor staff, NOT community moderators. Do not evaluate misinformation tags.
+## GUIDELINE 4: USE YOUR TRUE IDENTITY
+Source: https://help.nextdoor.com/s/article/use-your-true-identity
+
+Every neighbor on Nextdoor is required to use their true identity, including their real name and address.
+
+NOT ALLOWED:
+- Using the name of your business or organization as your personal account name.
+- Including professional titles or educational degrees in your name.
+- Adding emoji(s) to your name.
+
+ALLOWED:
+- Using a nickname, initials, or shortened version of your first name if that’s how you’re known in the community.
 
 ---
 
-### Non-violation report reasons (content should NOT be removed for these):
-- "Irrelevant or annoying" — reporter should hide/mute instead
-- "Goes against my beliefs, values or politics" — not a guideline violation
+## GUIDELINE 5: DO NOT ENGAGE IN HARMFUL ACTIVITY
+Source: https://help.nextdoor.com/s/article/Do-not-engage-in-harmful-activity?language=en_US
+
+Nextdoor prohibits activity that could harm others—whether it’s physical harm, scams, or anything putting neighbors at risk.
+
+### Appropriately report suspicious activity
+
+ALLOWED:
+- Posting about local crime or safety concerns, including specific details like unique features and full clothing descriptions.
+
+NOT ALLOWED:
+- Posts that assume someone is suspicious because of their race or ethnicity.
+- Posts that give descriptions of individuals that are so vague as to cast suspicion over an entire race or ethnicity.
+- Identifying a suspect by race and sex alone (including in the subject line of a post).
+
+### No threats to the safety of others
+
+NOT ALLOWED:
+- Threatening someone, their family or their pet’s safety
+- Posting comments that encourage violence against others
+- Threatening someone’s privacy or security
+
+### No fraud, spam or prohibited goods and services
+
+NOT ALLOWED:
+- Posting fraudulent content that purposefully deceives or misrepresents in order to result in financial or personal gain. This includes but is not limited to incentivized posts or reviews of businesses.
+- Posting spam, like unwanted, unsolicited, and/or repeated actions that negatively affect neighbors and the Nextdoor community. This may include but is not limited to:
+  - Sending large amounts of direct messages to users who are not expecting them
+  - Contacting people with unwanted content or requests
+  - Repeatedly posting the same or similar content
+  - Posting unoriginal/templated content with no personalization or original commentary
+  - Posts that are grammatically incorrect, use all caps, rely on a variety of hashtags, @mentions, emojis, or contain only a link without context.
+  - Posting more than one promotional post per week from a personal account
+- Phishing, including any attempt to gain access to someone’s account or personal information
+- Selling, soliciting, or offering any illegal goods or services
+
+### No graphic, violent, sexually explicit, or adult content
+
+NOT ALLOWED:
+- Posting photos that contain nudity
+- Posting sexually explicit or suggestive content
+- Sending unwanted chat messages with romantic or flirtatious intent
+- Posting content that is unnecessarily gruesome, gory, graphic, or violent
+
+### No violations of privacy
+
+ALLOWED:
+- Sharing contact information when recommending a service.
+- Sharing content outside of Nextdoor by using the share button that appears on posts.
+
+NOT ALLOWED:
+- Reposting information originally posted on Nextdoor beyond the author’s post visibility designation.
+- Posting the content of direct messages sent through Nextdoor without the permission of the sender.
+- Posting non-public legal documents.
+- Posting personal contact or account information, such as email addresses, credit cards, or bank information.
+- Posting a person’s legal or medical history, unless there is a compelling public interest served by doing so.
+- Posting photos of people in public places. However, if a parent or guardian requests that a photo of a minor be removed from Nextdoor, we may remove it.
+
+### Misinformation
+
+Nextdoor is committed to neighbor safety and reducing the spread of misinformation on critical topics like elections and health emergencies. Misinformation reports go to Nextdoor staff, not community moderators, for review.
+
+---
+
+## FOR SALE & FREE
+Items for sale or free MUST be posted using the “Sell or give away” option in the For Sale & Free section. Posting for-sale/free items in the main feed is a violation and should be removed.
+
+NOT ALLOWED:
+- Posting items for sale/free outside the For Sale & Free section (must use “Sell or give away” option)
+- Listing items sold for a business, including resellers, commercial consignment, and estate sellers
+- Incentive sales programs (e.g. Mary Kay, Amway, Avon, Scentsy)
+- Realtors listing properties for sale, rent, or lease
+- Listing gift cards
+- Personal ads / dating
+- Listing the same item or service more than once at the same time
+- Deleting and reposting a listing to increase visibility (allowed once previous listing has expired)
+- Posting links to items on other classified sites
+- Price gouging during emergencies
+
+ALLOWED:
+- Selling/giving away personal items (in For Sale & Free section)
+- Garage sale announcements may be posted in the main feed
+- Pet adoption or re-homing (selling live animals is NOT allowed)
+- Individual owners listing their own property for rent/sale
+
+---
+
+## NON-VIOLATION REPORT REASONS
+The following report reasons are NOT guideline violations — content should NOT be removed for these alone:
+- “Irrelevant or annoying” — reporter should hide/mute instead
+- “Goes against my beliefs, values or politics” — not a guideline violation
 
 ---
 
@@ -152,10 +287,11 @@ async function saveLLMConversation(filename, content) {
   }
 }
 
+
 /**
  * Call LLM API to analyze content
  */
-async function analyzeWithLLM(originalPost, flaggedContent, conversationThread = [], additionalContext = '') {
+async function analyzeWithLLM(originalPost, flaggedContent, conversationThread = [], additionalContext = '', imageUrls = []) {
   if (!CONFIG.apiKey || !CONFIG.apiEndpoint) {
     throw new Error('API configuration not set. Please configure in extension popup.');
   }
@@ -247,10 +383,13 @@ CRITICAL INSTRUCTIONS:
 • Public shaming tags are frequently misapplied to legitimate policy critiques of public figures
 • Political discourse about elected officials or candidates is generally permitted as long as it remains respectful
 • Only recommend removal if the content CLEARLY violates specific guidelines
+• IMPORTANT: Voting to remove content that does NOT violate the guidelines is itself a policy violation. Err on the side of Keep.
 • The guidelines do NOT require posts to have "substance," be well-argued, or provide evidence — short opinions are allowed
 • Do NOT penalize brevity, vagueness, or lack of detail — these are not violations
 • "Borderline" means the content is genuinely ambiguous against a SPECIFIC guideline, not that it is low-effort or vague
 • Your vote must be the SAME regardless of how many times you analyze the same content — consistency matters
+• Do NOT remove old or expired posts — the newsfeed serves as an archive
+• Sensitive reports (misinformation, discrimination, racial profiling) go directly to Nextdoor Support, not community moderators
 
 IMPORTANT - FOCUS YOUR ANALYSIS:
 - Your vote should ONLY evaluate the "FLAGGED CONTENT" below
@@ -302,12 +441,15 @@ For each tag, ask yourself:
 - Does context justify the content (political debate, community issue discussion)?
 
 Step 2 - MAKE YOUR VOTE DECISION:
-Based on your tag analysis:
-• If ALL tags are "Doesn't Apply" → Vote = Keep (this is the default — when in doubt, Keep)
-• If ANY tag is "Valid" with a clear, specific guideline violation → Vote = Remove
-• ONLY use "Maybe Remove" if a tag is "Borderline" AND you can cite the exact guideline text that MIGHT apply — never use it as a hedge
+Per Nextdoor: "Remove" = content violates guidelines and should be removed. "Keep" = content does not violate guidelines. "Maybe remove" = you're not sure how to handle the post. Voting to remove content that does NOT violate guidelines is itself a policy violation.
+Based on your tag analysis — follow this decision tree EXACTLY, no exceptions:
+• If ALL tags are "Doesn't Apply" → Vote = KEEP
+• If ANY tag is "Valid" → Vote = REMOVE
+• If ANY tag is "Borderline" (and none are "Valid") → Vote = MAYBE REMOVE — this is MANDATORY, not optional. You MAY NOT vote Keep when any tag is Borderline.
 • Political speech criticizing public figures should generally be Keep unless clearly violating respect guidelines
 • A post being short, vague, or "low quality" is NEVER grounds for removal or Maybe Remove
+
+STRICT RULE: Your vote MUST match your tag assessments. If you rated a tag Borderline, you cannot vote Keep. If you find yourself wanting to vote Keep despite a Borderline tag, re-evaluate whether the tag is actually "Doesn't Apply" instead.
 
 Step 3 - FORMAT YOUR RESPONSE (be concise, no filler):
 
@@ -327,6 +469,14 @@ ${hasAdditionalContext ? '\n**Moderator Notes:** [Brief response to moderator co
 
 IMPORTANT: Be brief. Your vote MUST match your tag analysis.`;
 
+  // Build user message content — array (with image URLs) or plain string
+  const userContent = imageUrls.length > 0
+    ? [
+        ...imageUrls.map(url => ({ type: 'image_url', image_url: { url } })),
+        { type: 'text', text: prompt },
+      ]
+    : prompt;
+
   // Build request body
   const requestBody = {
     model: CONFIG.model,
@@ -337,10 +487,10 @@ IMPORTANT: Be brief. Your vote MUST match your tag analysis.`;
       },
       {
         role: 'user',
-        content: prompt,
+        content: userContent,
       },
     ],
-    temperature: 0.3, // Lower temperature for more consistent moderation decisions
+    temperature: 0.3,
   };
 
   // Log request payload
@@ -395,7 +545,20 @@ ${JSON.stringify(requestBody, null, 2)}
     headers['anthropic-version'] = '2023-06-01';
     headers['anthropic-dangerous-direct-browser-access'] = 'true';
     const systemMsg = requestBody.messages.find(m => m.role === 'system');
-    const userMessages = requestBody.messages.filter(m => m.role !== 'system');
+    const userMessages = requestBody.messages.filter(m => m.role !== 'system').map(msg => {
+      // Convert OpenAI-style image_url blocks to Anthropic-style image source blocks
+      if (Array.isArray(msg.content)) {
+        return {
+          ...msg,
+          content: msg.content.map(block =>
+            block.type === 'image_url'
+              ? { type: 'image', source: { type: 'url', url: block.image_url.url } }
+              : block
+          ),
+        };
+      }
+      return msg;
+    });
     body = JSON.stringify({
       model: requestBody.model,
       max_tokens: 4096,
@@ -487,10 +650,10 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
 
   if (message.action === 'analyzeContent') {
     try {
-      const { originalPost, flaggedContent, conversationThread, additionalContext } = message.data;
+      const { originalPost, flaggedContent, conversationThread, additionalContext, imageUrls } = message.data;
 
-      // Perform analysis with full conversation context and additional context
-      const analysis = await analyzeWithLLM(originalPost, flaggedContent, conversationThread, additionalContext);
+      // Perform analysis with full conversation context, additional context, and images
+      const analysis = await analyzeWithLLM(originalPost, flaggedContent, conversationThread, additionalContext, imageUrls || []);
 
       // Send results back to content script
       if (sender.tab) {
