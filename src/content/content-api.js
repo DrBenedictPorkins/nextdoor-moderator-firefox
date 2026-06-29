@@ -2381,6 +2381,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const formattedAnalysis = formatAIAnalysis(styledAnalysisText);
 
         // Extract vote for styling
+        const modelInfo = message.model ? `${message.model} · ${message.provider || 'AI'}` : null;
         const voteRaw = (message.analysis.analysisText.match(/\*\*Vote Suggestion:\*\*\s*(Keep|Remove|Maybe Remove)/i) || [])[1]?.toLowerCase();
         const voteCard = {
           keep:          { border: '#16a34a', bg: '#f0fdf4', badge: '#166534', badgeBg: '#dcfce7', emoji: '✓', label: 'Keep' },
@@ -2393,7 +2394,10 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
             <div style="background:${voteCard.badgeBg}; padding:12px 16px; display:flex; align-items:center; gap:10px; border-bottom:1px solid ${voteCard.border}33;">
               <span style="font-size:22px; font-weight:800; color:${voteCard.badge};">${voteCard.emoji}</span>
               <span style="font-size:17px; font-weight:700; color:${voteCard.badge}; letter-spacing:-0.01em;">${voteCard.label}</span>
-              <span style="margin-left:auto; font-size:11px; font-weight:500; color:${voteCard.badge}99; text-transform:uppercase; letter-spacing:0.05em;">AI Recommendation</span>
+              <div style="margin-left:auto; text-align:right;">
+                <div style="font-size:11px; font-weight:500; color:${voteCard.badge}99; text-transform:uppercase; letter-spacing:0.05em;">AI Recommendation</div>
+                ${modelInfo ? `<div style="font-size:10px; color:${voteCard.badge}66; margin-top:2px; font-family:monospace;">${modelInfo}</div>` : ''}
+              </div>
             </div>
             <div style="background:${voteCard.bg}; padding:16px; font-size:13px; color:#1f2937; line-height:1.65;">
               ${formattedAnalysis}

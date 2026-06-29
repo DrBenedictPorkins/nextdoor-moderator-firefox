@@ -64,39 +64,46 @@ function populateModels(provider) {
 }
 
 /**
+ * Return the storage key for a provider's API key
+ */
+function apiKeyStorageKey(provider) {
+  return `apiKey_${provider}`;
+}
+
+/**
+ * Return the storage key for a provider's selected model
+ */
+function modelStorageKey(provider) {
+  return `model_${provider}`;
+}
+
+/**
  * Load configuration from storage
  */
 async function loadConfig() {
   try {
-    const result = await browser.storage.local.get(['apiKey', 'apiEndpoint', 'model', 'apiProvider']);
+    const result = await browser.storage.local.get(null);
 
-    if (result.apiKey) {
-      apiKeyInput.value = result.apiKey;
-    }
-
-    // Determine provider from stored endpoint or provider field
+    // Determine provider (with backwards-compat for old single-key storage)
     let provider = result.apiProvider;
     if (!provider && result.apiEndpoint) {
-      // Backwards compatibility: determine provider from endpoint
-      if (result.apiEndpoint.includes('openai.com')) {
-        provider = 'openai';
-      } else if (result.apiEndpoint.includes('anthropic.com')) {
-        provider = 'anthropic';
-      }
+      if (result.apiEndpoint.includes('openai.com')) provider = 'openai';
+      else if (result.apiEndpoint.includes('anthropic.com')) provider = 'anthropic';
     }
 
     if (provider) {
       apiProviderSelect.value = provider;
       populateModels(provider);
-    }
 
-    if (result.model) {
-      modelSelect.value = result.model;
-    }
+      // Load per-provider key; fall back to legacy apiKey for existing installs
+      const storedKey = result[apiKeyStorageKey(provider)] || result.apiKey || '';
+      apiKeyInput.value = storedKey;
 
-    // Check if configuration exists and mark as saved
-    if (result.apiKey && (result.apiEndpoint || provider)) {
-      isConfigSaved = true;
+      // Load per-provider model
+      const storedModel = result[modelStorageKey(provider)] || result.model || '';
+      if (storedModel) modelSelect.value = storedModel;
+
+      if (storedKey) isConfigSaved = true;
     }
 
     updateButtonState();
@@ -255,6 +262,9 @@ async function saveConfig() {
     const config = {
       apiProvider: provider,
       apiEndpoint: endpoint,
+      [apiKeyStorageKey(provider)]: apiKeyInput.value.trim(),
+      [modelStorageKey(provider)]: modelSelect.value,
+      // legacy key kept for background script compatibility
       apiKey: apiKeyInput.value.trim(),
       model: modelSelect.value,
     };
@@ -335,11 +345,20 @@ function showMessage(text, type = 'success') {
 /**
  * Handle provider selection change
  */
-apiProviderSelect.addEventListener('change', () => {
+apiProviderSelect.addEventListener('change', async () => {
   const provider = apiProviderSelect.value;
   populateModels(provider);
 
-  // Mark as unsaved when changing configuration
+  // Swap in the stored key + model for the newly selected provider (or clear)
+  if (provider) {
+    const result = await browser.storage.local.get([apiKeyStorageKey(provider), modelStorageKey(provider)]);
+    apiKeyInput.value = result[apiKeyStorageKey(provider)] || '';
+    const storedModel = result[modelStorageKey(provider)] || '';
+    if (storedModel) modelSelect.value = storedModel;
+  } else {
+    apiKeyInput.value = '';
+  }
+
   isConfigSaved = false;
   updateButtonState();
   updateStatus();

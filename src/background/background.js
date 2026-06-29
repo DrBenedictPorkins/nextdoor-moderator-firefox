@@ -872,6 +872,8 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
         browser.tabs.sendMessage(sender.tab.id, {
           action: 'analysisResult',
           analysis: analysis,
+          model: CONFIG.model,
+          provider: CONFIG.apiEndpoint.includes('anthropic.com') ? 'Anthropic' : 'OpenAI',
         });
       }
 
