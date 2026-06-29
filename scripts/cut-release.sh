@@ -41,12 +41,20 @@ npm version minor --no-git-tag-version --silent
 NEW_VERSION=$(node -p "require('./package.json').version")
 echo "  Next:   v${NEW_VERSION} (unreleased)"
 
+# ── Sync manifest.json version ───────────────────────────────────────────────
+node -e "
+const fs = require('fs');
+const m = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+m.version = '${NEW_VERSION}';
+fs.writeFileSync('manifest.json', JSON.stringify(m, null, 2) + '\n');
+"
+
 # ── 4. Build — bakes new version + build timestamp into dist/ ────────────────
 echo "  Building..."
 npm run build --silent
 
 # ── 5. Commit the version bump ───────────────────────────────────────────────
-git add package.json package-lock.json
+git add package.json package-lock.json manifest.json
 git commit -m "Bump version to ${NEW_VERSION} — begin next development cycle"
 
 echo ""
