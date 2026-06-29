@@ -27,3 +27,8 @@ Thumbs.db
 *.zip
 *.xpi
 web-ext-artifacts/
+
+# Dev artifacts
+docs/
+temp/
+artifacts/
