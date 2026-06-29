@@ -49,6 +49,10 @@
     "src/guidelines/guidelines.js"
   ],
   "content_security_policy": "script-src 'self'; object-src 'self'",
+  "data_collection_permissions": {
+    "required": [],
+    "optional": []
+  },
   "browser_specific_settings": {
     "gecko": {
       "id": "nextdoor-moderator@byteclub.com",
