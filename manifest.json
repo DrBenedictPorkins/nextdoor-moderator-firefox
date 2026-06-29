@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Nextdoor Moderator Assistant",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "AI-powered moderation assistant for Nextdoor community moderators",
   "permissions": [
     "storage",
@@ -13,13 +13,19 @@
     "*://*.openai.com/*"
   ],
   "background": {
-    "scripts": ["src/background/background.js"],
+    "scripts": [
+      "src/background/background.js"
+    ],
     "persistent": true
   },
   "content_scripts": [
     {
-      "matches": ["*://*.nextdoor.com/*"],
-      "js": ["src/content/content-api.js"],
+      "matches": [
+        "*://*.nextdoor.com/*"
+      ],
+      "js": [
+        "src/content/content-api.js"
+      ],
       "run_at": "document_start"
     }
   ],
@@ -38,7 +44,10 @@
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-  "web_accessible_resources": ["src/guidelines/guidelines.html", "src/guidelines/guidelines.js"],
+  "web_accessible_resources": [
+    "src/guidelines/guidelines.html",
+    "src/guidelines/guidelines.js"
+  ],
   "content_security_policy": "script-src 'self'; object-src 'self'",
   "browser_specific_settings": {
     "gecko": {
