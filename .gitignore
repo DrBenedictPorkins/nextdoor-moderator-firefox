@@ -30,3 +30,7 @@ web-ext-artifacts/
 
 # LLM logs (if saved locally)
 llm-*.md
+
+# Development artifacts — API captures, saved pages (may contain real user PII)
+resources/
+!resources/nextdoor-moderator-guidelines.md
