@@ -21,7 +21,7 @@ body {
 header {
   background: #111827;
   color: white;
-  padding: 20px 24px 18px;
+  padding: 14px 24px 12px;
   display: flex;
   align-items: center;
   gap: 14px;
@@ -48,7 +48,7 @@ header {
 
 /* ── Status pill ─────────────────────────────────────────────────────────── */
 .status-section {
-  padding: 12px 20px;
+  padding: 8px 20px 10px;
   background: #111827;
   border-bottom: 1px solid #1f2937;
 }
@@ -94,7 +94,7 @@ header {
 
 /* ── Config section ──────────────────────────────────────────────────────── */
 .config-section {
-  padding: 20px;
+  padding: 14px 20px;
   background: white;
   border-bottom: 1px solid #e5e7eb;
 }
@@ -105,11 +105,11 @@ header {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: #9ca3af;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .form-group {
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 label {
@@ -124,7 +124,7 @@ input[type="text"],
 input[type="password"],
 select {
   width: 100%;
-  padding: 9px 12px;
+  padding: 7px 12px;
   border: 1.5px solid #e5e7eb;
   border-radius: 8px;
   font-size: 13px;
@@ -165,7 +165,7 @@ small {
 /* ── Save button ─────────────────────────────────────────────────────────── */
 .btn {
   width: 100%;
-  padding: 10px 16px;
+  padding: 8px 16px;
   border: none;
   border-radius: 8px;
   font-size: 13px;
@@ -270,7 +270,7 @@ small {
 
 /* ── How to Use ──────────────────────────────────────────────────────────── */
 .usage-section {
-  padding: 20px;
+  padding: 14px 20px;
   background: white;
   border-bottom: 1px solid #e5e7eb;
 }
@@ -280,7 +280,7 @@ small {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 7px;
 }
 
 .usage-section li {
@@ -288,7 +288,7 @@ small {
   align-items: flex-start;
   gap: 10px;
   font-size: 12px;
-  line-height: 1.55;
+  line-height: 1.4;
   color: #4b5563;
 }
 
@@ -315,7 +315,7 @@ small {
 
 /* ── Footer ──────────────────────────────────────────────────────────────── */
 footer {
-  padding: 14px 20px;
+  padding: 10px 20px;
   background: #f8fafc;
   display: flex;
   align-items: center;
