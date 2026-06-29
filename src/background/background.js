@@ -6,7 +6,6 @@
 console.log('[Nextdoor Moderator] Background page initialized');
 
 // Enable/disable LLM conversation logging
-const ENABLE_LLM_LOGGING = true;
 
 // Configuration - users should set this via the popup UI
 const CONFIG = {
@@ -261,31 +260,6 @@ async function saveConfig(config) {
   Object.assign(CONFIG, config);
 }
 
-/**
- * Save LLM conversation logs to markdown files
- */
-async function saveLLMConversation(filename, content) {
-  if (!ENABLE_LLM_LOGGING) return;
-
-  try {
-    const blob = new Blob([content], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-
-    await browser.downloads.download({
-      url: url,
-      filename: filename,
-      saveAs: false,
-      conflictAction: 'overwrite'
-    });
-
-    console.log(`[Background] Saved ${filename}`);
-
-    // Clean up the blob URL after a short delay
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  } catch (error) {
-    console.error(`[Background] Failed to save ${filename}:`, error);
-  }
-}
 
 
 /**
@@ -700,44 +674,11 @@ IMPORTANT: Be brief. Your vote MUST match your guideline scan.`;
     temperature: 0.3,
   };
 
-  // Log request payload
-  if (ENABLE_LLM_LOGGING) {
-    const systemMessage = requestBody.messages.find(m => m.role === 'system');
-    const userMessage = requestBody.messages.find(m => m.role === 'user');
-
-    const requestLog = `# LLM Request Payload
-
-**Timestamp**: ${new Date().toISOString()}
-**Endpoint**: ${CONFIG.apiEndpoint}
-**Model**: ${CONFIG.model}
-
----
-
-## System Prompt
-
-\`\`\`
-${systemMessage?.content || 'N/A'}
-\`\`\`
-
----
-
-## User Prompt
-
-\`\`\`
-${userMessage?.content || 'N/A'}
-\`\`\`
-
----
-
-## Full Request Body
-
-\`\`\`json
-${JSON.stringify(requestBody, null, 2)}
-\`\`\`
-`;
-
-    await saveLLMConversation('llm-request.md', requestLog);
-  }
+  console.groupCollapsed('[Background] LLM Request', CONFIG.model);
+  console.log('endpoint:', CONFIG.apiEndpoint);
+  console.log('system:', requestBody.messages.find(m => m.role === 'system')?.content);
+  console.log('user:', requestBody.messages.find(m => m.role === 'user')?.content);
+  console.groupEnd();
 
   // Detect Anthropic API and adapt request format
   const isAnthropic = CONFIG.apiEndpoint.includes('anthropic.com');
@@ -796,45 +737,10 @@ ${JSON.stringify(requestBody, null, 2)}
   const data = await response.json();
   const parsedResponse = parseAnalysisResponse(data);
 
-  // Log response payload
-  if (ENABLE_LLM_LOGGING) {
-    const assistantMessage = data.choices?.[0]?.message?.content ||
-                            data.content?.[0]?.text ||
-                            'N/A';
-
-    const responseLog = `# LLM Response
-
-**Timestamp**: ${new Date().toISOString()}
-**Status**: ${response.status}
-
----
-
-## Response Body
-
-\`\`\`json
-${JSON.stringify(data, null, 2)}
-\`\`\`
-
----
-
-## Extracted Content
-
-**Assistant Message**:
-\`\`\`
-${assistantMessage}
-\`\`\`
-
----
-
-## Parsed Analysis
-
-**Analysis Text**: ${parsedResponse.analysisText || 'N/A'}
-**Raw Response**: ${parsedResponse.rawResponse || 'N/A'}
-**Timestamp**: ${parsedResponse.timestamp || 'N/A'}
-`;
-
-    await saveLLMConversation('llm-response.md', responseLog);
-  }
+  console.groupCollapsed('[Background] LLM Response', response.status);
+  console.log('raw:', data);
+  console.log('parsed:', parsedResponse.analysisText);
+  console.groupEnd();
 
   return parsedResponse;
 }

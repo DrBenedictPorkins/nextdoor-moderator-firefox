@@ -9,7 +9,6 @@
     "*://*.nextdoor.com/*",
     "webRequest",
     "webRequestBlocking",
-    "downloads",
     "*://*.anthropic.com/*",
     "*://*.openai.com/*"
   ],
