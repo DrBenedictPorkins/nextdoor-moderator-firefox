@@ -14,13 +14,14 @@ const validationStatus = document.getElementById('validation-status');
 // Model configuration for each provider
 const PROVIDER_MODELS = {
   'openai': [
-    { value: 'gpt-4o', label: 'GPT-4o' },
-    { value: 'o1', label: 'o1' }
+    { value: 'gpt-4o',      label: 'GPT-4o (latest)' },
+    { value: 'gpt-4o-mini', label: 'GPT-4o mini' },
+    { value: 'o3',          label: 'o3' },
+    { value: 'o4-mini',     label: 'o4-mini' },
   ],
   'anthropic': [
-    { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-    { value: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
-    { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' }
+    { value: 'claude-sonnet-4-6',           label: 'Claude Sonnet 4.6' },
+    { value: 'claude-haiku-4-5',             label: 'Claude Haiku 4.5' },
   ]
 };
 
@@ -417,3 +418,8 @@ async function loadVersion() {
 // Load config and version on popup open
 loadConfig();
 loadVersion();
+
+document.getElementById('view-guidelines')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  browser.tabs.create({ url: browser.runtime.getURL('src/guidelines/guidelines.html') });
+});

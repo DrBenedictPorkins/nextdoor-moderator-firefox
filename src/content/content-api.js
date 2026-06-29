@@ -262,7 +262,17 @@ function extractModerationData() {
 
     // Extract original post data
     // Use styledBody.text if available (contains full text including title), otherwise fall back to body
-    const postContent = post.styledBody?.text || post.body || '';
+    // For POLL posts, content lives in post.poll (body and styledBody are empty)
+    const pollText = post.poll
+      ? [
+          post.poll.question,
+          post.poll.description,
+          post.poll.options?.length
+            ? 'Poll options: ' + post.poll.options.map(o => o.label).join(' / ')
+            : '',
+        ].filter(Boolean).join('\n')
+      : '';
+    const postContent = post.styledBody?.text || post.body || pollText;
 
     // Check for media attachments (images, videos, links)
     const mediaAttachments = post.mediaAttachments || [];
@@ -324,6 +334,7 @@ function extractModerationData() {
         // Use styledBody.text if available (full text), otherwise fall back to body
         const commentContent = comment.styledBody?.text || comment.body || '';
 
+        const commentMediaAttachments = comment.mediaAttachments || [];
         const commentData = {
           id: comment.id,
           legacyId: comment.legacyCommentId,
@@ -335,6 +346,7 @@ function extractModerationData() {
           createdAtEpoch: comment.createdAt?.epochMillis || null,  // Store timestamp for filtering
           depth: depth,
           tags: comment.tags || [],  // Store tags array
+          imageUrls: commentMediaAttachments.filter(m => m.type === 'PHOTO').map(m => m.url).filter(Boolean),
         };
 
         // Add this comment to the global collection for sibling search
@@ -618,12 +630,12 @@ function formatAIAnalysis(text) {
       html += `<div style="margin-left: 20px; margin-bottom: 4px;">&bull; ${line.substring(2)}</div>`;
     }
     // Check if it's a copyable field (Comment Suggestion or Optional Note)
-    else if (line.match(/^<strong>(Comment Suggestion|Optional Note):<\/strong>/)) {
-      const copyValue = line.replace(/<\/?strong>/g, '').replace(/^(Comment Suggestion|Optional Note):\s*/, '').trim();
+    else if (line.match(/^<strong>Comment Suggestion:<\/strong>/)) {
+      const copyValue = line.replace(/<\/?strong>/g, '').replace(/^Comment Suggestion:\s*/, '').trim();
       const btnId = `copy-btn-${Math.random().toString(36).substring(2, 8)}`;
       html += `<div style="margin-top: 12px; margin-bottom: 4px; font-size: 15px; display: flex; align-items: baseline; gap: 8px;">
         <span>${line}</span>
-        <button id="${btnId}" data-copy-text="${copyValue.replace(/"/g, '&quot;')}" style="background: none; border: 1px solid #ccc; border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 12px; color: #666; white-space: nowrap; flex-shrink: 0;" title="Copy to clipboard">Copy</button>
+        <button id="${btnId}" data-copy-text="${copyValue.replace(/"/g, '&quot;')}" style="background: none; border: 1px solid #d1d5db; border-radius: 5px; padding: 3px 8px; font-size: 11px; font-weight: 500; color: #6b7280; cursor: pointer; white-space: nowrap; flex-shrink: 0;" title="Copy to clipboard">Copy</button>
       </div>`;
     }
     // Check if it's a section header (contains strong tag at start)
@@ -642,6 +654,14 @@ function formatAIAnalysis(text) {
 /**
  * Format conversation thread for display in overlay
  */
+function renderImageAttachments(imageUrls, hasText) {
+  if (!imageUrls || imageUrls.length === 0) return '';
+  const marginTop = hasText ? '10px' : '0';
+  return imageUrls.slice(0, 3).map(url =>
+    `<img src="${url}" style="max-width:240px; max-height:240px; object-fit:contain; border-radius:6px; margin-top:${marginTop}; display:block; cursor:pointer;" loading="lazy" onclick="window.open('${url}','_blank')">`
+  ).join('');
+}
+
 function formatConversationThread(conversationThread) {
   if (!conversationThread || conversationThread.length === 0) {
     return '';
@@ -652,30 +672,33 @@ function formatConversationThread(conversationThread) {
   const displayThread = conversationThread.slice(-maxDisplay);
   const truncated = conversationThread.length > maxDisplay;
 
-  let html = '<div style="margin-bottom: 16px;">';
-  html += '<h4 style="margin: 0 0 8px 0; color: #333; border-bottom: 1px solid #ddd; padding-bottom: 8px;">Conversation Thread</h4>';
+  const count = conversationThread.length;
+  const label = `Conversation Thread (${count} message${count !== 1 ? 's' : ''})`;
+  const truncatedNote = truncated ? `<span style="font-size:10px; color:#999; font-weight:400; margin-left:6px; font-style:italic;">showing last 5</span>` : '';
 
-  if (truncated) {
-    html += '<div style="font-size: 11px; color: #999; margin-bottom: 8px; font-style: italic;">Showing last 5 of ' + conversationThread.length + ' messages</div>';
-  }
-
-  displayThread.forEach((msg, idx) => {
-    // Calculate indent: Original post (depth -1) = 0px, depth 0 = 20px, depth 1 = 40px, etc.
+  let itemsHtml = '';
+  displayThread.forEach((msg) => {
     const indent = Math.max(0, (msg.depth + 1) * 20);
-    // Depth indicator: Original post gets none, depth 0 gets →, depth 1 gets →→, etc.
     const depthIndicator = msg.depth >= 0 ? '→ '.repeat(Math.min(msg.depth + 1, 3)) : '';
-
-    html += `<div style="margin-bottom: 6px; margin-left: ${indent}px; padding: 8px; background: #f9f9f9; border-left: 3px solid #2196F3; border-radius: 3px;">
-      <div style="font-size: 11px; color: #666; margin-bottom: 3px;">
-        ${depthIndicator}<strong>${msg.author}</strong> <span style="color: #999;">${msg.createdAt}</span>
+    itemsHtml += `<div style="margin-bottom: 6px; margin-left: ${indent}px; background: white; border: 1px solid #e5e7eb; border-left: 3px solid #3b82f6; border-radius: 6px; padding: 10px 12px;">
+      <div style="font-size: 11px; font-weight: 600; color: #374151; margin-bottom: 4px;">
+        ${depthIndicator}<strong>${msg.author}</strong> <span style="color: #9ca3af; font-weight: 400;">${msg.createdAt}</span>
       </div>
-      <div style="font-size: 12px; color: #333; line-height: 1.4;">
-        "${msg.content.length > 150 ? msg.content.substring(0, 150) + '...' : msg.content}"
+      <div style="font-size: 12px; color: #4b5563; line-height: 1.5; margin-top: 4px;">
+        ${msg.content ? `"${msg.content.length > 150 ? msg.content.substring(0, 150) + '...' : msg.content}"` : ''}
+        ${renderImageAttachments(msg.imageUrls, !!msg.content)}
       </div>
     </div>`;
   });
 
-  html += '</div>';
+  const html = `<div style="margin-bottom: 16px;">
+    <button onclick="(function(btn){const body=btn.nextElementSibling;const collapsed=body.style.display==='none';body.style.display=collapsed?'block':'none';btn.querySelector('.nd-chevron').textContent=collapsed?'▾':'▸';})(this)" style="display:flex; align-items:center; gap:6px; background:none; border:none; padding:0; cursor:pointer; font-family:inherit; width:100%; text-align:left; margin-bottom:0;">
+      <span class="nd-chevron" style="font-size:11px; color:#9ca3af;">▸</span>
+      <h4 style="font-size:11px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#6b7280; margin:0;">${label}${truncatedNote}</h4>
+    </button>
+    <div style="display:none; margin-top:10px;">${itemsHtml}</div>
+  </div>`;
+
   return html;
 }
 
@@ -708,9 +731,9 @@ function formatModerationDetails(moderationDetails) {
     });
 
     html += `
-      <div style="background: #ffebee; padding: 12px; border-radius: 4px; margin-bottom: 8px;">
-        <div style="font-weight: bold; color: #c62828; margin-bottom: 8px; font-size: 14px;">
-          📊 Reports Summary (${moderationDetails.totalReports} total)
+      <div style="background: white; border: 1px solid #fee2e2; border-radius: 10px; padding: 12px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+        <div style="font-size: 13px; font-weight: 700; color: #991b1b; margin-bottom: 12px;">
+          Reports Summary (${moderationDetails.totalReports} total)
         </div>
         <div style="font-size: 12px; color: #333;">
     `;
@@ -719,19 +742,18 @@ function formatModerationDetails(moderationDetails) {
     const totalVotes = keepCount + maybeRemoveCount + removeCount;
     if (totalVotes > 0) {
       html += `
-        <div style="font-weight: bold; margin-bottom: 4px;">Vote totals</div>
-        <div style="display: flex; gap: 16px; align-items: center; padding: 12px 0; margin-bottom: 12px; border-bottom: 1px solid #e0e0e0;">
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <span style="color: #4CAF50; font-size: 20px; font-weight: bold;">✓</span>
-            <span style="font-weight: bold; color: #4CAF50;">Keep: ${keepCount}</span>
+        <div style="display: flex; gap: 20px; padding: 12px 0; margin-bottom: 12px; border-bottom: 1px solid #f3f4f6;">
+          <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 20px; padding: 6px 14px; display: inline-flex; align-items: center; gap: 6px;">
+            <span style="color: #166534; font-size: 16px; font-weight: bold;">✓</span>
+            <span style="font-weight: 600; color: #166534; font-size: 13px;">Keep: ${keepCount}</span>
           </div>
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <span style="color: #9E9E9E; font-size: 20px; font-weight: bold;">−</span>
-            <span style="font-weight: bold; color: #9E9E9E;">Maybe remove: ${maybeRemoveCount}</span>
+          <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 20px; padding: 6px 14px; display: inline-flex; align-items: center; gap: 6px;">
+            <span style="color: #374151; font-size: 16px; font-weight: bold;">−</span>
+            <span style="font-weight: 600; color: #374151; font-size: 13px;">Maybe remove: ${maybeRemoveCount}</span>
           </div>
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <span style="color: #F44336; font-size: 20px; font-weight: bold;">✗</span>
-            <span style="font-weight: bold; color: #F44336;">Remove: ${removeCount}</span>
+          <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 20px; padding: 6px 14px; display: inline-flex; align-items: center; gap: 6px;">
+            <span style="color: #991b1b; font-size: 16px; font-weight: bold;">✗</span>
+            <span style="font-weight: 600; color: #991b1b; font-size: 13px;">Remove: ${removeCount}</span>
           </div>
         </div>
       `;
@@ -783,40 +805,46 @@ function formatModerationDetails(moderationDetails) {
         let voteColor = '';
         let voteLabel = '';
 
+        let voteBg = '';
         if (report.voteType === 'keep') {
           voteIcon = '✓';
-          voteColor = '#4CAF50'; // Green
+          voteColor = '#166534';
+          voteBg = '#dcfce7';
           voteLabel = 'Keep';
         } else if (report.voteType === 'remove') {
           voteIcon = '✗';
-          voteColor = '#F44336'; // Red
+          voteColor = '#991b1b';
+          voteBg = '#fee2e2';
           voteLabel = 'Remove';
         } else if (report.voteType === 'abstain') {
           voteIcon = '−';
-          voteColor = '#9E9E9E'; // Grey
+          voteColor = '#374151';
+          voteBg = '#f3f4f6';
           voteLabel = 'Maybe remove';
         } else if (report.voteType === 'report') {
           voteIcon = '🚩';
-          voteColor = '#FF9800'; // Orange for reports
+          voteColor = '#c2410c';
+          voteBg = '#fff7ed';
           voteLabel = 'Report';
         } else {
           voteIcon = '−';
-          voteColor = '#9E9E9E'; // Grey
+          voteColor = '#374151';
+          voteBg = '#f3f4f6';
           voteLabel = 'Maybe remove';
         }
 
         html += `
-          <div style="display: flex; align-items: center; gap: 8px; padding: 8px; background: #f9f9f9; border-radius: 4px; margin: 4px 0;">
-            <div style="width: 24px; height: 24px; border-radius: 50%; background: ${voteColor}; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 16px; flex-shrink: 0;">
+          <div style="display: flex; align-items: center; gap: 8px; padding: 8px; background: #fafafa; border-radius: 8px; border: 1px solid #f3f4f6; margin: 4px 0;">
+            <div style="width: 28px; height: 28px; border-radius: 50%; background: ${voteBg}; color: ${voteColor}; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; flex-shrink: 0;">
               ${voteIcon}
             </div>
             <div style="flex: 1; min-width: 0;">
-              <div style="font-weight: bold; font-size: 13px; color: #333;">${report.reporterName}</div>
-              <div style="font-size: 11px; color: #666;">${report.locationTime}</div>
-              ${report.reportType ? `<div style="font-size: 12px; color: #d32f2f; margin-top: 2px;">→ ${report.reportType}</div>` : ''}
+              <div style="font-size: 13px; font-weight: 600; color: #111827;">${report.reporterName}</div>
+              <div style="font-size: 11px; color: #9ca3af;">${report.locationTime}</div>
+              ${report.reportType ? `<div style="font-size: 11px; color: #dc2626; font-weight: 500; background: #fef2f2; padding: 2px 8px; border-radius: 4px; display: inline-block; margin-top: 3px;">→ ${report.reportType}</div>` : ''}
               ${report.additionalNote ? `<div style="font-size: 12px; color: #555; margin-top: 4px; font-style: italic; background: #fff; padding: 4px 8px; border-radius: 3px; border-left: 2px solid ${voteColor};">"${report.additionalNote}"</div>` : ''}
             </div>
-            <div style="color: ${voteColor}; font-weight: bold; font-size: 14px; flex-shrink: 0;">
+            <div style="font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px; background: ${voteBg}; color: ${voteColor}; flex-shrink: 0;">
               ${voteLabel}
             </div>
           </div>
@@ -830,9 +858,9 @@ function formatModerationDetails(moderationDetails) {
   // Votes section
   if (moderationDetails.totalVotes > 0 || moderationDetails.votes.length > 0) {
     html += `
-      <div style="background: #e3f2fd; padding: 12px; border-radius: 4px; margin-bottom: 8px;">
-        <div style="font-weight: bold; color: #1976d2; margin-bottom: 8px; font-size: 14px;">
-          👍 Community Votes (${moderationDetails.totalVotes} total)
+      <div style="background: white; border: 1px solid #dbeafe; border-radius: 10px; padding: 12px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+        <div style="font-size: 13px; font-weight: 700; color: #1e40af; margin-bottom: 12px;">
+          Community Votes (${moderationDetails.totalVotes} total)
         </div>
         <div style="font-size: 12px; color: #333;">
     `;
@@ -906,18 +934,18 @@ function formatModerationDetails(moderationDetails) {
       // Display vote totals with color-coded icons
       if (hasVoteTotals || keepCount > 0 || abstainCount > 0 || removeCount > 0) {
         html += `
-          <div style="display: flex; gap: 16px; align-items: center; padding: 8px 0; margin-bottom: 12px; border-bottom: 1px solid #e0e0e0;">
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <span style="color: #4CAF50; font-size: 20px; font-weight: bold;">✓</span>
-              <span style="font-weight: bold; color: #4CAF50;">Keep: ${keepCount}</span>
+          <div style="display: flex; gap: 20px; padding: 12px 0; margin-bottom: 12px; border-bottom: 1px solid #f3f4f6;">
+            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 20px; padding: 6px 14px; display: inline-flex; align-items: center; gap: 6px;">
+              <span style="color: #166534; font-size: 16px; font-weight: bold;">✓</span>
+              <span style="font-weight: 600; color: #166534; font-size: 13px;">Keep: ${keepCount}</span>
             </div>
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <span style="color: #9E9E9E; font-size: 20px; font-weight: bold;">−</span>
-              <span style="font-weight: bold; color: #9E9E9E;">Abstain: ${abstainCount}</span>
+            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 20px; padding: 6px 14px; display: inline-flex; align-items: center; gap: 6px;">
+              <span style="color: #374151; font-size: 16px; font-weight: bold;">−</span>
+              <span style="font-weight: 600; color: #374151; font-size: 13px;">Abstain: ${abstainCount}</span>
             </div>
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <span style="color: #F44336; font-size: 20px; font-weight: bold;">✗</span>
-              <span style="font-weight: bold; color: #F44336;">Remove: ${removeCount}</span>
+            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 20px; padding: 6px 14px; display: inline-flex; align-items: center; gap: 6px;">
+              <span style="color: #991b1b; font-size: 16px; font-weight: bold;">✗</span>
+              <span style="font-weight: 600; color: #991b1b; font-size: 13px;">Remove: ${removeCount}</span>
             </div>
           </div>
         `;
@@ -930,31 +958,35 @@ function formatModerationDetails(moderationDetails) {
       let voteColor = '';
       let voteLabel = '';
 
+      let voteBgV = '';
       if (vote.voteType === 'keep') {
         voteIcon = '✓';
-        voteColor = '#4CAF50'; // Green
+        voteColor = '#166534';
+        voteBgV = '#dcfce7';
         voteLabel = 'Keep';
       } else if (vote.voteType === 'remove') {
         voteIcon = '✗';
-        voteColor = '#F44336'; // Red
+        voteColor = '#991b1b';
+        voteBgV = '#fee2e2';
         voteLabel = 'Remove';
       } else {
         voteIcon = '−';
-        voteColor = '#9E9E9E'; // Grey
+        voteColor = '#374151';
+        voteBgV = '#f3f4f6';
         voteLabel = 'Abstain';
       }
 
       html += `
-        <div style="display: flex; align-items: center; gap: 8px; padding: 8px; background: #f9f9f9; border-radius: 4px; margin: 4px 0;">
-          <div style="width: 24px; height: 24px; border-radius: 50%; background: ${voteColor}; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 16px; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px; background: #fafafa; border-radius: 8px; border: 1px solid #f3f4f6; margin: 4px 0;">
+          <div style="width: 28px; height: 28px; border-radius: 50%; background: ${voteBgV}; color: ${voteColor}; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; flex-shrink: 0;">
             ${voteIcon}
           </div>
           <div style="flex: 1; min-width: 0;">
-            <div style="font-weight: bold; font-size: 13px; color: #333;">${vote.voterName}</div>
-            <div style="font-size: 11px; color: #666;">${vote.locationTime}</div>
+            <div style="font-size: 13px; font-weight: 600; color: #111827;">${vote.voterName}</div>
+            <div style="font-size: 11px; color: #9ca3af;">${vote.locationTime}</div>
             ${vote.additionalNote ? `<div style="font-size: 12px; color: #555; margin-top: 4px; font-style: italic; background: #fff; padding: 4px 8px; border-radius: 3px; border-left: 2px solid ${voteColor};">"${vote.additionalNote}"</div>` : ''}
           </div>
-          <div style="color: ${voteColor}; font-weight: bold; font-size: 14px; flex-shrink: 0;">
+          <div style="font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px; background: ${voteBgV}; color: ${voteColor}; flex-shrink: 0;">
             ${voteLabel}
           </div>
         </div>
@@ -1050,16 +1082,17 @@ async function createContentOverlay(result) {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: ${overlayW}px;
-    ${overlayH ? `height: ${overlayH}px;` : 'max-height: 80vh;'}
+    width: min(${overlayW}px, calc(100vw - 40px));
+    ${overlayH ? `height: min(${overlayH}px, calc(100vh - 40px));` : 'max-height: calc(100vh - 40px);'}
     background: white;
-    border: 2px solid #4CAF50;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.35), 0 8px 24px rgba(0,0,0,0.2);
     z-index: 10000;
-    font-family: Arial, sans-serif;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
     display: flex;
     flex-direction: column;
+    box-sizing: border-box;
   `;
 
   // Inner scrollable content wrapper
@@ -1070,6 +1103,8 @@ async function createContentOverlay(result) {
     overflow-y: auto;
     padding: 20px;
     min-height: 0;
+    background: #f8fafc;
+    border-radius: 0 0 12px 12px;
   `;
 
   // Resize handle - stays visible at bottom-right corner
@@ -1105,8 +1140,8 @@ async function createContentOverlay(result) {
     if (!resizing) return;
     const dx = e.clientX - rStartX;
     const dy = e.clientY - rStartY;
-    const newW = Math.max(400, Math.min(1200, rStartW + dx * 2));
-    const newH = Math.max(300, rStartH + dy * 2);
+    const newW = Math.max(400, Math.min(window.innerWidth - 40, rStartW + dx * 2));
+    const newH = Math.max(300, Math.min(window.innerHeight - 40, rStartH + dy * 2));
     overlay.style.width = newW + 'px';
     overlay.style.height = newH + 'px';
     overlay.style.maxHeight = 'none';
@@ -1120,20 +1155,38 @@ async function createContentOverlay(result) {
     });
   });
 
+  // Clamp overlay within viewport on window resize
+  const clampOverlayToViewport = () => {
+    const maxW = window.innerWidth - 40;
+    const maxH = window.innerHeight - 40;
+    const curW = overlay.offsetWidth;
+    const curH = overlay.offsetHeight;
+    if (curW > maxW) { overlay.style.width = maxW + 'px'; }
+    if (curH > maxH) { overlay.style.height = maxH + 'px'; }
+  };
+  window.addEventListener('resize', clampOverlayToViewport);
+  // Clean up listener when overlay is removed
+  new MutationObserver((_, obs) => {
+    if (!document.getElementById('nextdoor-moderator-overlay')) {
+      window.removeEventListener('resize', clampOverlayToViewport);
+      obs.disconnect();
+    }
+  }).observe(document.body, { childList: true, subtree: false });
+
   let contentHTML = '';
 
   // Validation: Handle media-only posts
   if (validation.hasMediaOnly) {
     contentHTML += `
-      <div style="background: #fff3e0; border: 1px solid #ff9800; border-radius: 4px; padding: 12px; color: #e65100; margin-bottom: 12px;">
-        <strong>⚠️ Media-Only Post:</strong> This post contains ${originalPost.mediaCount} ${originalPost.mediaTypes.toLowerCase()} but no text.
+      <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 16px; color: #92400e; margin-bottom: 12px; font-size: 13px;">
+        <strong>Media-Only Post:</strong> This post contains ${originalPost.mediaCount} ${originalPost.mediaTypes.toLowerCase()} but no text.
         <br><br>
-        <strong>⚠️ Required:</strong> You MUST describe the media content in the "Additional Context" field below before analyzing.
+        <strong>Required:</strong> You MUST describe the media content in the "Additional Context" field below before analyzing.
       </div>
     `;
   } else if (!validation.hasOriginalPost) {
     contentHTML += `
-      <div style="background: #ffebee; border: 1px solid #f44336; border-radius: 4px; padding: 12px; color: #c62828; margin-bottom: 12px;">
+      <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 16px; color: #92400e; margin-bottom: 12px; font-size: 13px;">
         <strong>Error:</strong> Could not find original post content or media
       </div>
     `;
@@ -1141,7 +1194,7 @@ async function createContentOverlay(result) {
 
   if (!validation.postIsFlagged && !validation.hasFlaggedComments) {
     contentHTML += `
-      <div style="background: #ffebee; border: 1px solid #f44336; border-radius: 4px; padding: 12px; color: #c62828; margin-bottom: 12px;">
+      <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 16px; color: #92400e; margin-bottom: 12px; font-size: 13px;">
         <strong>Error:</strong> No flagged content found
       </div>
     `;
@@ -1150,8 +1203,8 @@ async function createContentOverlay(result) {
   // Success case
   if (validation.hasOriginalPost && (validation.postIsFlagged || validation.hasFlaggedComments)) {
     const multipleWarning = validation.multipleFlags ? `
-      <div style="background: #fff3e0; border: 1px solid #ff9800; border-radius: 4px; padding: 12px; color: #e65100; margin-bottom: 12px;">
-        <strong>⚠️ Warning:</strong> Multiple items flagged. Analyzing first one only.
+      <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 16px; color: #92400e; margin-bottom: 12px; font-size: 13px;">
+        <strong>Warning:</strong> Multiple items flagged. Analyzing first one only.
       </div>
     ` : '';
 
@@ -1159,36 +1212,36 @@ async function createContentOverlay(result) {
       ${multipleWarning}
 
       <div style="margin-bottom: 16px;">
-        <h4 style="margin: 0 0 8px 0; color: #333; border-bottom: 1px solid #ddd; padding-bottom: 8px;">Original Post</h4>
-        <div style="margin-bottom: 8px;">
-          <strong>Author:</strong> ${originalPost.author}
+        <h4 style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7280; margin: 0 0 12px 0; padding: 0;">Original Post</h4>
+        <div style="font-size: 13px; color: #374151; margin-bottom: 4px;">
+          <strong>${originalPost.author}</strong>
         </div>
-        <div style="margin-bottom: 8px; font-size: 12px; color: #666;">
-          <strong>Posted:</strong> ${originalPost.createdAt} • <strong>Location:</strong> ${originalPost.neighborhood}
+        <div style="font-size: 12px; color: #9ca3af; margin-bottom: 12px;">
+          ${originalPost.createdAt} &bull; ${originalPost.neighborhood}
         </div>
-        <div style="background: #f5f5f5; padding: 12px; border-radius: 4px; line-height: 1.6; color: #333;">
-          ${originalPost.content}
-        </div>
+        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 16px; line-height: 1.6; color: #1f2937; font-size: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); white-space: pre-wrap;">${originalPost.content.trim()}${renderImageAttachments(originalPost.imageUrls, !!originalPost.content)}</div>
       </div>
 
       ${flaggedContent.conversationThread && flaggedContent.conversationThread.length > 0 ? formatConversationThread(flaggedContent.conversationThread) : ''}
 
       <div style="margin-bottom: 16px;">
-        <h4 style="margin: 0 0 8px 0; color: #333; border-bottom: 1px solid #ddd; padding-bottom: 8px;">Flagged Content</h4>
+        <h4 style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7280; margin: 0 0 12px 0; padding: 0;">Flagged Content</h4>
         ${flaggedContent.type === 'post' ? `
-          <div style="background: #ffebee; padding: 12px; border-radius: 4px; color: #c62828; margin-bottom: 8px;">
-            <strong>⚠️ Original post is flagged</strong>
+          <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 16px; color: #991b1b; font-size: 13px; font-weight: 500; margin-bottom: 8px;">
+            Original post is flagged
           </div>
         ` : `
-          <div style="margin-bottom: 8px;">
-            <strong>Author:</strong> ${flaggedContent.author}
+          <div style="font-size: 13px; color: #374151; margin-bottom: 4px;">
+            <strong>${flaggedContent.author}</strong>
           </div>
-          <div style="margin-bottom: 8px; font-size: 12px; color: #666;">
-            <strong>Posted:</strong> ${flaggedContent.createdAt}
-            ${flaggedContent.depth !== undefined ? ` • <strong>Depth:</strong> ${flaggedContent.depth}` : ''}
+          <div style="font-size: 12px; color: #9ca3af; margin-bottom: 12px;">
+            ${flaggedContent.createdAt}
+            ${flaggedContent.depth !== undefined ? ` &bull; Depth: ${flaggedContent.depth}` : ''}
           </div>
-          <div style="background: #fff3e0; padding: 12px; border-radius: 4px; line-height: 1.6; color: #333; border-left: 4px solid #ff9800;">
-            ${flaggedContent.content}
+          <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 16px; line-height: 1.6; color: #1f2937; font-size: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
+            ${flaggedContent.content || ''}
+            ${renderImageAttachments(flaggedContent.imageUrls, !!flaggedContent.content)}
+            ${!flaggedContent.content && !(flaggedContent.imageUrls?.length > 0) ? '<span style="color:#9ca3af; font-style:italic; font-size:13px;">(no text content)</span>' : ''}
           </div>
         `}
         ${formatModerationDetails(flaggedContent.moderationDetails)}
@@ -1197,21 +1250,14 @@ async function createContentOverlay(result) {
   }
 
   scrollWrapper.innerHTML = `
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-      <h3 style="margin: 0; color: #333;">Content Review (API Data)</h3>
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <button id="copy-all-btn" style="background: none; border: 1px solid #bbb; border-radius: 4px; padding: 3px 10px; font-size: 12px; color: #555; cursor: pointer;" title="Copy post tree + AI decision to clipboard">Copy All</button>
-        <button id="close-overlay" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #666;">&times;</button>
-      </div>
-    </div>
     ${contentHTML}
-    <div style="margin-top: 16px; border-top: 2px solid #ddd; padding-top: 16px;">
+    <div style="margin-top: 16px; border-top: 1px solid #e5e7eb; padding-top: 16px;">
       <div style="margin-bottom: 12px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-          <label for="additional-context" style="font-weight: bold; font-size: 13px; color: #555;">
-            Additional Context ${(validation.hasMediaOnly || validation.hasVideos) ? '<span style="color: #f44336;">*</span>' : '(optional)'}
+          <label for="additional-context" style="font-size: 12px; font-weight: 600; color: #374151; letter-spacing: 0.01em;">
+            Additional Context ${(validation.hasMediaOnly || validation.hasVideos) ? '<span style="color: #dc2626;">*</span>' : '(optional)'}
           </label>
-          <button id="clear-context-btn" style="background: none; border: 1px solid #ccc; border-radius: 4px; padding: 2px 8px; font-size: 11px; color: #999; cursor: pointer; display: ${savedReview?.additionalContext ? 'inline-block' : 'none'};" title="Clear saved context">Clear</button>
+          <button id="clear-context-btn" style="background: none; border: 1px solid #d1d5db; border-radius: 5px; padding: 2px 8px; font-size: 11px; font-weight: 500; color: #6b7280; cursor: pointer; display: ${savedReview?.additionalContext ? 'inline-block' : 'none'};" title="Clear saved context">Clear</button>
         </div>
         <textarea
           id="additional-context"
@@ -1220,45 +1266,59 @@ async function createContentOverlay(result) {
             width: 100%;
             min-height: 60px;
             max-height: 200px;
-            padding: 8px;
-            border: 2px solid ${(validation.hasMediaOnly || validation.hasVideos) ? '#f44336' : '#ccc'};
-            border-radius: 4px;
-            font-family: Arial, sans-serif;
+            padding: 10px 12px;
+            border: 1.5px solid ${(validation.hasMediaOnly || validation.hasVideos) ? '#fca5a5' : '#e5e7eb'};
+            border-radius: 8px;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
             font-size: 13px;
+            color: #1f2937;
+            background: ${(validation.hasMediaOnly || validation.hasVideos) ? '#fffbfb' : 'white'};
             resize: vertical;
             box-sizing: border-box;
-            ${(validation.hasMediaOnly || validation.hasVideos) ? 'background: #fff9c4;' : ''}
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
           "
         ></textarea>
         ${validation.hasVideos ? `
-          <div style="font-size: 12px; color: #f44336; margin-top: 4px;">
-            <strong>⚠️ This field is REQUIRED</strong> — this post contains video that cannot be sent to the AI. Please describe what the video shows.
+          <div style="font-size: 12px; color: #dc2626; margin-top: 4px;">
+            <strong>This field is REQUIRED</strong> — this post contains video that cannot be sent to the AI. Please describe what the video shows.
           </div>
         ` : validation.hasMediaOnly ? `
-          <div style="font-size: 12px; color: #f44336; margin-top: 4px;">
-            <strong>⚠️ This field is REQUIRED</strong> because the post has no text content.
+          <div style="font-size: 12px; color: #dc2626; margin-top: 4px;">
+            <strong>This field is REQUIRED</strong> because the post has no text content.
           </div>
         ` : `
-          <div style="font-size: 11px; color: #666; margin-top: 4px;">
+          <div style="font-size: 11px; color: #9ca3af; margin-top: 4px;">
             This context will be included in the LLM analysis to provide additional information about media or context not visible in the text.
           </div>
         `}
       </div>
-      <button id="analyze-btn" style="
-        width: 100%;
-        padding: 12px;
-        background: #2196F3;
-        color: white;
-        border: none;
-        border-radius: 6px;
-        font-size: 15px;
-        font-weight: bold;
-        cursor: pointer;
-        transition: background 0.2s;
-      " onmouseover="this.style.background='#1976D2'" onmouseout="this.style.background='#2196F3'">
-        🤖 Analyze with AI
-      </button>
+      <div style="display: flex; align-items: center; gap: 14px; margin-top: 10px; flex-wrap: wrap;">
+        <button id="analyze-btn" style="
+          background: #111827;
+          border: none;
+          border-radius: 8px;
+          padding: 9px 18px;
+          font-size: 13px;
+          font-weight: 600;
+          color: white;
+          cursor: pointer;
+          font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        ">
+          🤖 Analyze with AI
+        </button>
+        <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #6b7280; cursor: pointer; user-select: none;">
+          <input type="checkbox" id="include-thread-ctx" style="width: 14px; height: 14px; cursor: pointer; accent-color: #111827;">
+          Include thread context <span style="font-weight: 400; color: #9ca3af;">(send full conversation thread to AI)</span>
+        </label>
+      </div>
       <div id="ai-analysis-container" style="margin-top: 16px;"></div>
+      <div id="nd-qa-section" style="margin-top:16px; border-top:1px solid #e5e7eb; padding-top:14px;">
+        <div id="nd-qa-history" style="display:flex; flex-direction:column; gap:10px; margin-bottom:10px;"></div>
+        <div style="display:flex; gap:8px; align-items:flex-start;">
+          <textarea id="nd-qa-input" rows="1" placeholder="Ask about this post… e.g. 'Why are we policing this?'" style="flex:1; padding:9px 12px; border:1.5px solid #e5e7eb; border-radius:8px; font-family:system-ui,sans-serif; font-size:13px; color:#374151; resize:none; box-sizing:border-box; line-height:1.4; overflow:hidden;"></textarea>
+          <button id="nd-qa-send" style="padding:9px 14px; background:#111827; color:white; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; font-family:system-ui,sans-serif; white-space:nowrap; flex-shrink:0;">Ask</button>
+        </div>
+      </div>
     </div>
   `;
 
@@ -1270,7 +1330,7 @@ async function createContentOverlay(result) {
       const buildInfo = await response.json();
 
       const footer = document.createElement('div');
-      footer.style.cssText = 'text-align: center; padding: 8px; color: #999; font-size: 11px; border-top: 1px solid #ddd; margin-top: 16px;';
+      footer.style.cssText = 'text-align: center; padding: 12px; color: #d1d5db; font-size: 11px; border-top: 1px solid #e5e7eb; margin-top: 16px; background: #f8fafc; border-radius: 0 0 12px 12px;';
 
       let footerText = `Version ${buildInfo.version}`;
 
@@ -1300,8 +1360,43 @@ async function createContentOverlay(result) {
     }
   };
 
+  // Dark header bar
+  const headerBar = document.createElement('div');
+  headerBar.style.cssText = `
+    background: #111827;
+    padding: 16px 20px;
+    border-radius: 12px 12px 0 0;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+  `;
+  headerBar.innerHTML = `
+    <span style="color: #f9fafb; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;">Moderation Review</span>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <button id="view-post-btn" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #d1d5db; border-radius: 6px; padding: 5px 12px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;" title="Hide overlay to view original post">View Post</button>
+      <button id="copy-all-btn" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #d1d5db; border-radius: 6px; padding: 5px 12px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;" title="Copy post tree + AI decision to clipboard">Copy All</button>
+      <button id="close-overlay" style="background: none; border: none; font-size: 20px; line-height: 1; cursor: pointer; color: #9ca3af; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;">&times;</button>
+    </div>
+  `;
+
+  // Vote action footer — sits below scroll area, always visible
+  const voteFooter = document.createElement('div');
+  voteFooter.id = 'nd-vote-footer';
+  voteFooter.style.cssText = `
+    flex-shrink: 0;
+    padding: 16px 20px;
+    background: white;
+    border-top: 2px solid #e5e7eb;
+    border-radius: 0 0 12px 12px;
+    display: none;
+  `;
+
   // Add scrollWrapper into overlay, then add to DOM
+  overlay.insertBefore(headerBar, resizeHandle);
   overlay.insertBefore(scrollWrapper, resizeHandle);
+  overlay.insertBefore(voteFooter, resizeHandle);
   document.body.appendChild(backdrop);
   document.body.appendChild(overlay);
 
@@ -1333,8 +1428,27 @@ async function createContentOverlay(result) {
         });
       });
     });
+    // Show Re-analyze button since cached analysis is present
+    const cachedAnalyzeBtn = overlay.querySelector('#analyze-btn');
+    if (cachedAnalyzeBtn) cachedAnalyzeBtn.style.display = 'inline-block';
     // Scroll cached analysis into view after overlay is added to DOM
     requestAnimationFrame(() => analysisContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+
+    // Show vote footer from cached data
+    const cachedContentId = flaggedContent?.id;
+    if (savedReview.analysisText && cachedContentId) {
+      requestAnimationFrame(() => showVoteFooter(savedReview.analysisText, cachedContentId));
+    } else {
+      // Fallback: parse comment from HTML data-copy-text
+      const copyMatch = savedReview.analysisHtml?.match(/data-copy-text="([^"]+)"/);
+      const cachedComment = copyMatch ? decodeURIComponent(copyMatch[1].replace(/&quot;/g, '"')) : '';
+      const cachedVoteMatch = savedReview.analysisHtml?.match(/[✓✗−]\s*(Keep|Remove|Maybe Remove)/i);
+      const cachedVote = cachedVoteMatch?.[1] || 'keep';
+      if (cachedContentId) {
+        const syntheticText = `**Vote Suggestion:** ${cachedVote}\n**Comment Suggestion:** ${cachedComment}`;
+        requestAnimationFrame(() => showVoteFooter(syntheticText, cachedContentId));
+      }
+    }
   }
 
   // Save function — captures current state
@@ -1357,6 +1471,54 @@ async function createContentOverlay(result) {
   // Close button handler
   const closeBtn = overlay.querySelector('#close-overlay');
   closeBtn?.addEventListener('click', removeOverlay);
+
+  // View Post toggle: collapses overlay so the user can read the original post
+  const viewPostBtn = overlay.querySelector('#view-post-btn');
+  let overlayCollapsed = false;
+  let savedOverlayStyle = '';
+  let footerWasVisible = false;
+  viewPostBtn?.addEventListener('click', () => {
+    overlayCollapsed = !overlayCollapsed;
+    if (overlayCollapsed) {
+      savedOverlayStyle = overlay.style.cssText;
+      footerWasVisible = voteFooter.style.display !== 'none';
+      backdrop.style.opacity = '0';
+      backdrop.style.pointerEvents = 'none';
+      scrollWrapper.style.display = 'none';
+      voteFooter.style.display = 'none';
+      resizeHandle.style.display = 'none';
+      overlay.style.cssText = `
+        position: fixed;
+        top: 12px;
+        right: 12px;
+        width: auto;
+        max-width: 340px;
+        border-radius: 10px;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.35);
+        z-index: 2147483647;
+        display: flex;
+        flex-direction: column;
+        background: #111827;
+      `;
+      headerBar.style.borderRadius = '10px';
+      viewPostBtn.textContent = 'Resume Review';
+      viewPostBtn.style.background = 'rgba(99,102,241,0.3)';
+      viewPostBtn.style.borderColor = 'rgba(99,102,241,0.6)';
+      viewPostBtn.style.color = '#c7d2fe';
+    } else {
+      backdrop.style.opacity = '';
+      backdrop.style.pointerEvents = '';
+      scrollWrapper.style.display = '';
+      voteFooter.style.display = footerWasVisible ? 'block' : 'none';
+      resizeHandle.style.display = 'block';
+      overlay.style.cssText = savedOverlayStyle;
+      headerBar.style.borderRadius = '12px 12px 0 0';
+      viewPostBtn.textContent = 'View Post';
+      viewPostBtn.style.background = 'rgba(255,255,255,0.1)';
+      viewPostBtn.style.borderColor = 'rgba(255,255,255,0.2)';
+      viewPostBtn.style.color = '#d1d5db';
+    }
+  });
 
   // Click outside to close (click on backdrop)
   backdrop.addEventListener('click', removeOverlay);
@@ -1434,6 +1596,102 @@ async function createContentOverlay(result) {
     });
   });
 
+  // Q&A section
+  const qaInput = overlay.querySelector('#nd-qa-input');
+  const qaSendBtn = overlay.querySelector('#nd-qa-send');
+  const qaHistory = overlay.querySelector('#nd-qa-history');
+
+  // Auto-resize textarea as user types
+  qaInput?.addEventListener('input', () => {
+    qaInput.style.height = 'auto';
+    qaInput.style.height = qaInput.scrollHeight + 'px';
+  });
+
+  // Submit on Enter (Shift+Enter for newline)
+  qaInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      qaSendBtn?.click();
+    }
+  });
+
+  const submitQuestion = async () => {
+    const question = qaInput?.value?.trim();
+    if (!question || qaSendBtn?.disabled) return;
+
+    // Add user bubble
+    const userBubble = document.createElement('div');
+    userBubble.style.cssText = 'background:#111827; color:white; border-radius:10px 10px 2px 10px; padding:9px 13px; font-size:13px; font-family:system-ui,sans-serif; align-self:flex-end; max-width:90%; line-height:1.45;';
+    userBubble.textContent = question;
+    qaHistory?.appendChild(userBubble);
+
+    qaInput.value = '';
+    qaInput.style.height = 'auto';
+    qaSendBtn.disabled = true;
+    qaSendBtn.textContent = '…';
+
+    // Add typing indicator
+    const typingBubble = document.createElement('div');
+    typingBubble.style.cssText = 'background:#f3f4f6; color:#6b7280; border-radius:10px 10px 10px 2px; padding:9px 13px; font-size:13px; font-family:system-ui,sans-serif; align-self:flex-start; max-width:90%;';
+    typingBubble.textContent = '…';
+    qaHistory?.appendChild(typingBubble);
+    typingBubble.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    const reviewData = JSON.parse(overlay.dataset.reviewData || '{}');
+    const analysisText = overlay.querySelector('#ai-analysis-container')?.innerText?.trim() || '';
+
+    // Collect prior conversation turns from the chat UI
+    const history = [];
+    if (qaHistory) {
+      const bubbles = Array.from(qaHistory.children);
+      for (const bubble of bubbles) {
+        const isUser = bubble.style.alignSelf === 'flex-end' || bubble.style.background?.includes('111827');
+        const text = bubble.textContent?.trim();
+        if (text) history.push({ role: isUser ? 'user' : 'assistant', content: text });
+      }
+    }
+
+    try {
+      const resp = await browser.runtime.sendMessage({
+        action: 'askAboutPost',
+        question,
+        reviewData,
+        analysisText,
+        history,
+      });
+
+      const answer = resp?.answer || 'No response.';
+      const revisedMatch = answer.match(/\*\*Revised:\s*(Keep|Maybe Remove|Remove)\s*[—\-]\s*(.+?)\*\*/i);
+      const mainText = answer.replace(/\*\*Revised:.*?\*\*/i, '').trim();
+
+      typingBubble.style.cssText = 'background:#f3f4f6; color:#1f2937; border-radius:10px 10px 10px 2px; padding:9px 13px; font-size:13px; font-family:system-ui,sans-serif; align-self:flex-start; max-width:90%; line-height:1.5; white-space:pre-wrap;';
+      typingBubble.textContent = mainText;
+
+      if (revisedMatch) {
+        const vote = revisedMatch[1];
+        const comment = revisedMatch[2].trim();
+        const voteColors = { 'Keep': '#166534', 'Remove': '#991b1b', 'Maybe Remove': '#92400e' };
+        const voteBgs = { 'Keep': '#f0fdf4', 'Remove': '#fef2f2', 'Maybe Remove': '#fffbeb' };
+        const color = voteColors[vote] || '#374151';
+        const bg = voteBgs[vote] || '#f9fafb';
+        const pill = document.createElement('div');
+        pill.style.cssText = `margin-top:8px; padding:8px 11px; background:${bg}; border-left:3px solid ${color}; border-radius:0 6px 6px 0; font-size:12px; color:${color}; font-family:system-ui,sans-serif;`;
+        pill.innerHTML = `<strong>Revised: ${vote}</strong> — ${comment}`;
+        typingBubble.appendChild(pill);
+      }
+    } catch (err) {
+      typingBubble.style.color = '#c62828';
+      typingBubble.textContent = 'Error: ' + err.message;
+    }
+
+    typingBubble.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    qaSendBtn.disabled = false;
+    qaSendBtn.textContent = 'Ask';
+    qaInput?.focus();
+  };
+
+  qaSendBtn?.addEventListener('click', submitQuestion);
+
   // Show clear button when context is typed
   additionalContextTextarea?.addEventListener('input', () => {
     const clearBtnEl = overlay.querySelector('#clear-context-btn');
@@ -1472,16 +1730,14 @@ async function createContentOverlay(result) {
       return;
     }
 
-    // Clear existing analysis
-    analysisContainer.innerHTML = '';
-
-    // Show loading state
+    // Show loading state in the analysis container
     analyzeBtn.disabled = true;
-    analyzeBtn.style.cursor = 'not-allowed';
-    analyzeBtn.style.opacity = '0.6';
-    analyzeBtn.innerHTML = `
-      <span style="display: inline-block; margin-right: 8px;">Analyzing...</span>
-      <span style="display: inline-block; animation: spin 1s linear infinite;">⟳</span>
+    analyzeBtn.style.display = 'none';
+    analysisContainer.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 10px; padding: 14px 16px; background: white; border: 1px solid #e5e7eb; border-radius: 10px; color: #6b7280; font-size: 13px;">
+        <span style="display: inline-block; animation: spin 1s linear infinite; font-size: 16px;">⟳</span>
+        Analyzing…
+      </div>
     `;
 
     // Add spinner animation if not exists
@@ -1498,14 +1754,17 @@ async function createContentOverlay(result) {
     }
 
     // Send to background script with additional context and image URLs
+    const includeThread = overlay.querySelector('#include-thread-ctx')?.checked ?? false;
     browser.runtime.sendMessage({
       action: 'analyzeContent',
       data: {
         originalPost: data.originalPost,
         flaggedContent: data.flaggedContent,
-        conversationThread: data.flaggedContent?.conversationThread || [],
+        conversationThread: includeThread ? (data.flaggedContent?.conversationThread || []) : [],
         additionalContext: additionalContext,
-        imageUrls: data.originalPost?.imageUrls || [],
+        imageUrls: data.flaggedContent?.imageUrls?.length > 0
+          ? data.flaggedContent.imageUrls
+          : (data.originalPost?.imageUrls || []),
       },
     }).then((response) => {
       console.log('[Content] Analysis request response:', response);
@@ -1520,7 +1779,8 @@ async function createContentOverlay(result) {
         analyzeBtn.disabled = false;
         analyzeBtn.style.cursor = 'pointer';
         analyzeBtn.style.opacity = '1';
-        analyzeBtn.innerHTML = '🤖 Analyze with AI';
+        analyzeBtn.innerHTML = '↺ Re-analyze';
+        analyzeBtn.style.display = 'inline-block';
       } else {
         console.log('[Content] Analysis request sent, waiting for result...');
       }
@@ -1535,12 +1795,22 @@ async function createContentOverlay(result) {
       analyzeBtn.disabled = false;
       analyzeBtn.style.cursor = 'pointer';
       analyzeBtn.style.opacity = '1';
-      analyzeBtn.innerHTML = '🤖 Analyze with AI';
+      analyzeBtn.innerHTML = '↺ Re-analyze';
+      analyzeBtn.style.display = 'inline-block';
     });
   });
 
   // Add build info footer after event listeners are attached
   addBuildInfoFooter();
+
+  // Always show Analyze button — user must confirm before analysis runs
+  if (!savedReview?.analysisHtml) {
+    const analyzeButton = overlay.querySelector('#analyze-btn');
+    if (analyzeButton) {
+      analyzeButton.innerHTML = '🤖 Analyze with AI';
+      analyzeButton.style.display = 'inline-block';
+    }
+  }
 }
 
 /**
@@ -1752,6 +2022,266 @@ function showAnalysisOverlay(analysisText) {
 /**
  * Apply color and emoji styling to Vote Suggestion line
  */
+/**
+ * Auto-vote via Nextdoor's GraphQL API directly — no UI clicking needed
+ * Returns true if successful
+ */
+async function autoVote(voteLabel, contentId, notes = '') {
+  const choiceIdMap = {
+    'keep': 'keep',
+    'remove': 'remove',
+    'maybe remove': 'consider_remove',
+  };
+  const choiceId = choiceIdMap[voteLabel.toLowerCase()];
+  if (!choiceId || !contentId) { console.warn('[AutoVote] Missing choiceId or contentId'); return false; }
+
+  // Content scripts run in an isolated world with moz-extension:// origin, which Nextdoor
+  // rejects with 403. Inject a <script> into the page DOM to run with the page's origin.
+  return new Promise((resolve) => {
+    const reqId = 'ndvote-' + Date.now();
+
+    const handler = (e) => {
+      if (e.data?.type === 'ndAutoVoteResult' && e.data?.reqId === reqId) {
+        window.removeEventListener('message', handler);
+        console.log('[AutoVote] Result:', e.data.success, 'status:', e.data.status);
+        resolve(e.data.success);
+      }
+    };
+    window.addEventListener('message', handler);
+
+    const script = document.createElement('script');
+    script.textContent = `
+      (async function() {
+        const reqId = ${JSON.stringify(reqId)};
+        const contentId = ${JSON.stringify(contentId)};
+        const choiceId = ${JSON.stringify(choiceId)};
+        const notes = ${JSON.stringify(notes)};
+        try {
+          const csrfToken = document.cookie.split(';').map(c => c.trim())
+            .find(c => c.startsWith('csrftoken='))?.split('=')[1];
+          const headers = {
+            'content-type': 'application/json',
+            'x-csrftoken': csrfToken,
+            'x-nd-train': window.RELEASE_TOKEN,
+            'x-nd-uti': sessionStorage.getItem('ndas_tab_id'),
+            'x-nd-request-locale': 'US',
+          };
+          await fetch('https://nextdoor.com/api/gql/ModerationChoicePage?', {
+            method: 'POST', credentials: 'include',
+            headers: {...headers, 'x-nd-cts': String(Date.now())},
+            body: JSON.stringify({
+              operationName: 'ModerationChoicePage',
+              variables: { contentId },
+              extensions: { persistedQuery: { version: 1, sha256Hash: 'ff18fa078558a01359bdf38de65198827a769079fc46afcc32522d67ddf563bf' } }
+            })
+          });
+          const resp = await fetch('https://nextdoor.com/api/gql/SubmitModerationChoice?', {
+            method: 'POST', credentials: 'include',
+            headers: {...headers, 'x-nd-cts': String(Date.now())},
+            body: JSON.stringify({
+              operationName: 'SubmitModerationChoice',
+              variables: { contentId, choiceId, notes },
+              extensions: { persistedQuery: { version: 1, sha256Hash: 'f567a86818f566d37cdbe574bdbc0c3ae539abdf3b7f2522c315307ff961fc75' } }
+            })
+          });
+          window.postMessage({ type: 'ndAutoVoteResult', reqId, success: resp.ok, status: resp.status }, '*');
+        } catch(err) {
+          window.postMessage({ type: 'ndAutoVoteResult', reqId, success: false, status: 0 }, '*');
+        }
+        document.currentScript?.remove();
+      })();
+    `;
+    document.documentElement.appendChild(script);
+  });
+}
+
+/**
+ * Render the vote action footer (vote selector + comment + submit)
+ * analysisText: raw LLM text (to parse vote/comment suggestions)
+ * contentId: prefixed ID like "post_123" or "comment_456"
+ */
+function showVoteFooter(analysisText, contentId) {
+  const footer = document.getElementById('nd-vote-footer');
+  if (!footer) return;
+
+  const voteMatch = analysisText.match(/\*\*Vote Suggestion:\*\*\s*(Keep|Remove|Maybe Remove)/i);
+  const vote = (voteMatch?.[1] || 'keep').toLowerCase();
+
+  const commentMatch = analysisText.match(/\*\*Comment Suggestion:\*\*\s*(.+?)(?:\n|$)/is);
+  const commentText = commentMatch?.[1]?.trim() || '';
+
+  const voteConfig = {
+    'keep':         { label: '✓ Keep',        dark: '#166534' },
+    'maybe remove': { label: '− Maybe Remove', dark: '#374151' },
+    'remove':       { label: '✗ Remove',       dark: '#991b1b' },
+  };
+
+  const pillStyle = (v, selected) => {
+    const dark = voteConfig[v].dark;
+    return `flex:1; padding:10px 6px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; font-family:system-ui,sans-serif; border:2px solid ${dark}; background:${selected ? dark : 'white'}; color:${selected ? 'white' : dark};`;
+  };
+
+  footer.innerHTML = `
+    <div style="display:flex; gap:8px; margin-bottom:12px;">
+      ${Object.entries(voteConfig).map(([v, cfg]) =>
+        `<button class="nd-vote-pill" data-vote="${v}" style="${pillStyle(v, v === vote)}">${cfg.label}</button>`
+      ).join('')}
+    </div>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+      <span style="font-size:11px; font-weight:600; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em; font-family:system-ui,sans-serif;">Comment</span>
+      <button id="nd-variations-btn" style="background:none; border:1px solid #d1d5db; border-radius:6px; padding:3px 9px; font-size:12px; cursor:pointer; color:#374151; font-family:system-ui,sans-serif;">🎲 Variations</button>
+    </div>
+    <textarea id="nd-vote-comment" rows="2" style="width:100%; padding:10px 12px; border:1.5px solid #e5e7eb; border-radius:8px; font-family:system-ui,sans-serif; font-size:13px; color:#374151; resize:vertical; box-sizing:border-box; margin-bottom:8px;">${commentText}</textarea>
+    <div id="nd-variations-list" style="display:none; margin-bottom:10px; border:1px solid #e5e7eb; border-radius:8px; overflow:hidden;"></div>
+    <button id="nd-submit-vote" style="width:100%; padding:14px; background:#111827; color:white; border:none; border-radius:8px; font-size:15px; font-weight:600; cursor:pointer; font-family:system-ui,sans-serif; letter-spacing:-0.01em;">Submit Vote</button>
+    <div id="nd-vote-error" style="display:none; color:#c62828; font-size:12px; margin-top:8px; text-align:center;"></div>
+  `;
+
+  footer.style.display = 'block';
+
+  let selectedVote = vote;
+  const originalVote = vote;
+  const originalComment = commentText;
+
+  const variationsBtn = footer.querySelector('#nd-variations-btn');
+  const variationsList = footer.querySelector('#nd-variations-list');
+  const commentTextarea = footer.querySelector('#nd-vote-comment');
+
+  if (variationsBtn) variationsBtn.disabled = !originalComment.trim();
+
+  commentTextarea?.addEventListener('input', () => {
+    if (variationsBtn) variationsBtn.disabled = !commentTextarea.value.trim();
+  });
+
+  footer.querySelectorAll('.nd-vote-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectedVote = btn.dataset.vote;
+      footer.querySelectorAll('.nd-vote-pill').forEach(b => {
+        b.style.cssText = pillStyle(b.dataset.vote, b.dataset.vote === selectedVote);
+      });
+      if (commentTextarea) {
+        commentTextarea.value = btn.dataset.vote === originalVote ? originalComment : '';
+      }
+      if (variationsBtn) variationsBtn.disabled = !commentTextarea?.value?.trim();
+      if (variationsList) variationsList.style.display = 'none';
+    });
+  });
+
+  variationsBtn?.addEventListener('click', async () => {
+    if (variationsList.style.display !== 'none') {
+      variationsList.style.display = 'none';
+      variationsBtn.textContent = '🎲 Variations';
+      return;
+    }
+    variationsBtn.textContent = '⏳ Generating...';
+    variationsBtn.disabled = true;
+    try {
+      const resp = await browser.runtime.sendMessage({
+        action: 'generateCommentVariations',
+        currentComment: commentTextarea?.value?.trim() || '',
+        vote: selectedVote,
+      });
+      if (resp?.success && resp.variations?.length) {
+        variationsList.innerHTML = resp.variations.map((v, i) =>
+          `<button class="nd-var-item" data-idx="${i}" style="display:block; width:100%; text-align:left; padding:9px 12px; background:white; border:none; border-bottom:1px solid #f3f4f6; font-size:12px; color:#374151; cursor:pointer; font-family:system-ui,sans-serif; line-height:1.4;">${v}</button>`
+        ).join('');
+        variationsList.style.display = 'block';
+        variationsList.querySelectorAll('.nd-var-item').forEach(btn => {
+          btn.addEventListener('mouseenter', () => { btn.style.background = '#f9fafb'; });
+          btn.addEventListener('mouseleave', () => { btn.style.background = 'white'; });
+          btn.addEventListener('click', () => {
+            if (commentTextarea) commentTextarea.value = btn.textContent;
+            variationsList.style.display = 'none';
+            variationsBtn.textContent = '🎲 Variations';
+          });
+        });
+      } else {
+        variationsList.innerHTML = `<div style="padding:10px 12px; font-size:12px; color:#6b7280; font-family:system-ui,sans-serif;">${resp?.error || 'No variations returned'}</div>`;
+        variationsList.style.display = 'block';
+      }
+    } catch (err) {
+      variationsList.innerHTML = `<div style="padding:10px 12px; font-size:12px; color:#c62828; font-family:system-ui,sans-serif;">Error: ${err.message}</div>`;
+      variationsList.style.display = 'block';
+    }
+    variationsBtn.textContent = '🎲 Variations';
+    variationsBtn.disabled = false;
+  });
+
+  footer.querySelector('#nd-submit-vote').addEventListener('click', async () => {
+    const submitBtn = footer.querySelector('#nd-submit-vote');
+    const errorDiv = footer.querySelector('#nd-vote-error');
+    const comment = footer.querySelector('#nd-vote-comment')?.value?.trim() || '';
+
+    submitBtn.disabled = true;
+    submitBtn.style.opacity = '0.7';
+    submitBtn.textContent = 'Submitting...';
+    errorDiv.style.display = 'none';
+
+    const success = await autoVote(selectedVote, contentId, comment);
+    if (success) {
+      showVoteToast(selectedVote, false);
+      setTimeout(() => {
+        document.getElementById('nextdoor-moderator-backdrop')?.remove();
+        document.getElementById('nextdoor-moderator-overlay')?.remove();
+        const nextBtn = Array.from(document.querySelectorAll('button.blocks-1659weo'))
+          .find(b => b.textContent.trim() === 'Next');
+        if (nextBtn) nextBtn.click();
+      }, 900);
+    } else {
+      errorDiv.textContent = 'Submission failed (403) — please vote manually on Nextdoor.';
+      errorDiv.style.display = 'block';
+      submitBtn.disabled = false;
+      submitBtn.style.opacity = '1';
+      submitBtn.textContent = 'Submit Vote';
+    }
+  });
+}
+
+/**
+ * Show a brief toast notification for auto-vote results
+ */
+function showVoteToast(voteLabel, wasAuto) {
+  const colors = { keep: '#166534', remove: '#991b1b', 'maybe remove': '#374151' };
+  const icons = { keep: '✓', remove: '✗', 'maybe remove': '−' };
+  const color = colors[voteLabel.toLowerCase()] || '#374151';
+  const icon = icons[voteLabel.toLowerCase()] || '−';
+
+  const toast = document.createElement('div');
+  toast.style.cssText = `
+    position: fixed;
+    bottom: 32px;
+    right: 32px;
+    background: #111827;
+    color: white;
+    border-radius: 10px;
+    padding: 14px 20px;
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: ndToastIn 0.2s ease;
+  `;
+  toast.innerHTML = `
+    <span style="color:${color}; font-size:18px; font-weight:700;">${icon}</span>
+    <span>${wasAuto ? 'Auto-voted' : 'Voted'}: <strong>${voteLabel.charAt(0).toUpperCase() + voteLabel.slice(1)}</strong></span>
+  `;
+
+  if (!document.getElementById('nd-toast-style')) {
+    const s = document.createElement('style');
+    s.id = 'nd-toast-style';
+    s.textContent = `@keyframes ndToastIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }`;
+    document.head.appendChild(s);
+  }
+
+  document.body.appendChild(toast);
+  setTimeout(() => { toast.style.transition = 'opacity 0.3s'; toast.style.opacity = '0'; }, 2500);
+  setTimeout(() => toast.remove(), 2900);
+}
+
 function styleVoteSuggestion(analysisText) {
   if (!analysisText) return analysisText;
 
@@ -1823,9 +2353,9 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log('[Content] Data keys:', message.data ? Object.keys(message.data) : 'null');
     console.log('[Content] Full data:', message.data);
     moderationFeedData = message.data;
-    dataIsValid = true;  // Mark data as valid
+    dataIsValid = true;
     console.log('[Content] ✓ moderationFeedData stored successfully');
-    enableButton();  // Enable button now that data is ready
+    enableButton();
     sendResponse({ success: true });
     return;
   }
@@ -1849,9 +2379,25 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Apply vote suggestion styling before formatting
         const styledAnalysisText = styleVoteSuggestion(message.analysis.analysisText);
         const formattedAnalysis = formatAIAnalysis(styledAnalysisText);
+
+        // Extract vote for styling
+        const voteRaw = (message.analysis.analysisText.match(/\*\*Vote Suggestion:\*\*\s*(Keep|Remove|Maybe Remove)/i) || [])[1]?.toLowerCase();
+        const voteCard = {
+          keep:          { border: '#16a34a', bg: '#f0fdf4', badge: '#166534', badgeBg: '#dcfce7', emoji: '✓', label: 'Keep' },
+          remove:        { border: '#dc2626', bg: '#fef2f2', badge: '#991b1b', badgeBg: '#fee2e2', emoji: '✗', label: 'Remove' },
+          'maybe remove':{ border: '#d97706', bg: '#fffbeb', badge: '#92400e', badgeBg: '#fef3c7', emoji: '−', label: 'Maybe Remove' },
+        }[voteRaw] || { border: '#6b7280', bg: '#f9fafb', badge: '#374151', badgeBg: '#f3f4f6', emoji: '?', label: 'Unknown' };
+
         analysisContainer.innerHTML = `
-          <div style="background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; padding: 16px; margin-top: 12px;">
-            ${formattedAnalysis}
+          <div style="border:2px solid ${voteCard.border}; border-radius:10px; overflow:hidden; margin-top:12px;">
+            <div style="background:${voteCard.badgeBg}; padding:12px 16px; display:flex; align-items:center; gap:10px; border-bottom:1px solid ${voteCard.border}33;">
+              <span style="font-size:22px; font-weight:800; color:${voteCard.badge};">${voteCard.emoji}</span>
+              <span style="font-size:17px; font-weight:700; color:${voteCard.badge}; letter-spacing:-0.01em;">${voteCard.label}</span>
+              <span style="margin-left:auto; font-size:11px; font-weight:500; color:${voteCard.badge}99; text-transform:uppercase; letter-spacing:0.05em;">AI Recommendation</span>
+            </div>
+            <div style="background:${voteCard.bg}; padding:16px; font-size:13px; color:#1f2937; line-height:1.65;">
+              ${formattedAnalysis}
+            </div>
           </div>
         `;
         // Remove cache banner if present (this is fresh analysis)
@@ -1867,13 +2413,23 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
             });
           });
         });
-        // Save analysis to localStorage
+        // Save analysis to localStorage (including raw text for footer re-render)
         const overlayEl = document.querySelector('#nextdoor-moderator-overlay');
         const pid = overlayEl?.dataset?.postId;
         if (pid) {
           const ctx = document.querySelector('#additional-context')?.value?.trim() || '';
-          savePostReview(pid, { additionalContext: ctx, analysisHtml: analysisContainer.innerHTML });
+          savePostReview(pid, {
+            additionalContext: ctx,
+            analysisHtml: analysisContainer.innerHTML,
+            analysisText: message.analysis.analysisText,
+          });
         }
+
+        // Show vote action footer
+        const overlayReviewData = JSON.parse(overlayEl?.dataset?.reviewData || '{}');
+        const flaggedContent = overlayReviewData.flaggedContent;
+        const contentId = flaggedContent?.id;
+        showVoteFooter(message.analysis.analysisText, contentId);
       } else {
         console.error('[Content] No analysisText in message:', message);
         analysisContainer.innerHTML = `
@@ -1887,7 +2443,8 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       analyzeBtn.disabled = false;
       analyzeBtn.style.cursor = 'pointer';
       analyzeBtn.style.opacity = '1';
-      analyzeBtn.innerHTML = '🤖 Analyze with AI';
+      analyzeBtn.innerHTML = '↺ Re-analyze';
+      analyzeBtn.style.display = 'inline-block';
     } else {
       console.warn('[Content] Analysis container not found, falling back to legacy behavior');
       // Fallback to old behavior if container doesn't exist (shouldn't happen)
@@ -1922,7 +2479,8 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       analyzeBtn.disabled = false;
       analyzeBtn.style.cursor = 'pointer';
       analyzeBtn.style.opacity = '1';
-      analyzeBtn.innerHTML = '🤖 Analyze with AI';
+      analyzeBtn.innerHTML = '↺ Re-analyze';
+      analyzeBtn.style.display = 'inline-block';
     } else {
       // Fallback to error overlay
       showErrorOverlay(message.error || 'Analysis failed');
@@ -1942,45 +2500,35 @@ function checkIfModerationPage() {
   return window.location.pathname.includes('/moderation_feed');
 }
 
-/**
- * Enable the analyze button
- */
 function enableButton() {
   const button = document.getElementById('nextdoor-moderator-trigger');
   if (button) {
     button.disabled = false;
     button.style.opacity = '1';
     button.style.cursor = 'pointer';
-    button.style.background = '#4CAF50';  // Green
-    button.textContent = 'Analyze Post';
+    button.style.background = '#166534';
+    button.textContent = '⚖ AI Review';
   }
 }
 
-/**
- * Disable the analyze button
- */
 function disableButton() {
   const button = document.getElementById('nextdoor-moderator-trigger');
   if (button) {
     button.disabled = true;
-    button.style.opacity = '0.5';
+    button.style.opacity = '0.35';
     button.style.cursor = 'not-allowed';
-    button.style.background = '#9E9E9E';
+    button.style.background = '#1f2937';
   }
 }
 
-/**
- * Set button to loading state
- */
 function setButtonLoading() {
   const button = document.getElementById('nextdoor-moderator-trigger');
   if (!button) return;
-
   button.disabled = true;
   button.style.opacity = '0.7';
   button.style.cursor = 'not-allowed';
-  button.style.background = '#FF9800';  // Orange
-  button.textContent = '⏳ Loading...';
+  button.style.background = '#1f2937';
+  button.textContent = '⏳ Loading…';
 }
 
 /**
@@ -1996,99 +2544,537 @@ function updateButtonState() {
   }
 }
 
-/**
- * Create and inject the "Analyze Post" button
- */
-function injectButton() {
-  console.log('[Nextdoor Moderator] injectButton() called');
-  console.log('[Nextdoor Moderator] Current URL:', window.location.href);
-  console.log('[Nextdoor Moderator] document.body exists:', !!document.body);
+function injectWidget() {
+  if (document.getElementById('nd-widget')) return;
+  if (!window.location.href.includes('nextdoor.com')) return;
 
-  if (!window.location.href.includes('nextdoor.com')) {
-    console.log('[Nextdoor Moderator] Not on nextdoor.com, skipping button injection');
-    return;
-  }
-
-  // Check if button already exists
-  if (document.getElementById('nextdoor-moderator-trigger')) {
-    console.log('[Nextdoor Moderator] Button already exists, skipping');
-    return;
-  }
-
-  const button = document.createElement('button');
-  button.id = 'nextdoor-moderator-trigger';
-  button.textContent = 'Analyze Post';
-  button.disabled = true;
-  button.style.cssText = `
+  const widget = document.createElement('div');
+  widget.id = 'nd-widget';
+  widget.style.cssText = `
     position: fixed;
     top: 80px;
-    right: 20px;
-    padding: 12px 24px;
-    background: #9E9E9E;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-size: 14px;
-    font-weight: bold;
-    cursor: not-allowed;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-    z-index: 9999;
-    opacity: 0.5;
+    right: 16px;
+    z-index: 2147483647;
+    background: #111827;
+    border-radius: 12px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.45), 0 1px 4px rgba(0,0,0,0.15);
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 156px;
+    font-family: system-ui, -apple-system, sans-serif;
   `;
 
-  button.addEventListener('click', () => {
-    if (button.disabled || !dataIsValid) {
-      console.log('[Content] Button clicked but data not ready');
-      return;
-    }
+  const brand = document.createElement('div');
+  brand.style.cssText = 'font-size: 9px; color: #4b5563; text-align: center; padding: 1px 4px 5px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700;';
+  brand.textContent = 'ND Moderator';
+  widget.appendChild(brand);
 
+  const mkBtn = (id, label, title) => {
+    const b = document.createElement('button');
+    b.id = id;
+    b.textContent = label;
+    if (title) b.title = title;
+    b.style.cssText = `
+      width: 100%; padding: 9px 13px; border: none; border-radius: 8px;
+      font-size: 13px; font-weight: 600; cursor: pointer; text-align: left;
+      font-family: system-ui, sans-serif; color: white; background: #1f2937;
+      transition: background 0.15s, opacity 0.15s; box-sizing: border-box;
+    `;
+    b.addEventListener('mouseenter', () => { if (!b.disabled) b.style.background = '#374151'; });
+    b.addEventListener('mouseleave', () => { if (!b.disabled) b.style.background = b._activeBg || '#1f2937'; });
+    return b;
+  };
+
+  // ── AI Review button ──
+  const reviewBtn = mkBtn('nextdoor-moderator-trigger', '⚖ AI Review', 'Open AI moderation analysis for this post');
+  reviewBtn.disabled = true;
+  reviewBtn.style.opacity = '0.35';
+  reviewBtn.style.cursor = 'not-allowed';
+  reviewBtn.addEventListener('click', () => {
+    if (reviewBtn.disabled || !dataIsValid) return;
     const result = extractModerationData();
     createContentOverlay(result);
   });
+  widget.appendChild(reviewBtn);
 
-  document.body.appendChild(button);
+  // ── Post Panel button ──
+  const panelBtn = mkBtn('nd-export-btn', '📄 Post Panel', 'Expand all replies, then preview and chat about this post');
+  panelBtn.style.display = 'none';
+  panelBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    panelBtn.disabled = true;
+    panelBtn.style.cursor = 'not-allowed';
+    panelBtn.style.opacity = '0.6';
 
-  // Initial state check
+    await expandAllReplies(panelBtn);
+
+    panelBtn.textContent = '📄 Loading…';
+    const resp = await browser.runtime.sendMessage({ action: 'getLastExpandedPost' }).catch(() => null);
+    const post = resp?.post || expandedPostData;
+
+    panelBtn.disabled = false;
+    panelBtn.style.cursor = 'pointer';
+    panelBtn.style.opacity = '1';
+    panelBtn.textContent = '📄 Post Panel';
+
+    if (post) showExportPreview(post);
+  });
+  widget.appendChild(panelBtn);
+
+  document.body.appendChild(widget);
+
+  // AI Review: enable/disable based on URL
   updateButtonState();
-
-  // Watch for URL changes (SPA navigation) - lightweight approach
-  // Listen for browser back/forward navigation
   window.addEventListener('popstate', updateButtonState);
-
-  // Check for SPA navigation via URL changes (lightweight, 1-second interval)
   let lastUrl = window.location.href;
   setInterval(() => {
-    const currentUrl = window.location.href;
-    if (currentUrl !== lastUrl) {
-      lastUrl = currentUrl;
-      updateButtonState();
-    }
+    const cur = window.location.href;
+    if (cur !== lastUrl) { lastUrl = cur; updateButtonState(); }
   }, 1000);
 
-  console.log('[Nextdoor Moderator] Button added with conditional enabling');
+  // Post Panel: show/hide based on expanded overlay (500ms poll)
+  let wasOpen = false;
+  setInterval(() => {
+    const isOpen = !!document.querySelector('button[aria-label="Close expanded post"]');
+    if (isOpen === wasOpen) return;
+    wasOpen = isOpen;
+    panelBtn.style.display = isOpen ? 'block' : 'none';
+    if (!isOpen) {
+      document.getElementById('nd-export-preview')?.remove();
+      panelBtn.textContent = '📄 Post Panel';
+      panelBtn.style.opacity = '1';
+      widget.style.display = 'flex';
+    }
+  }, 500);
 }
 
-// Initialize button when DOM is ready
-// Note: We run at document_start for interceptors, but need to wait for body to inject button
 function waitForBody() {
-  console.log('[Nextdoor Moderator] waitForBody() called, readyState:', document.readyState);
-
   if (document.body) {
-    console.log('[Nextdoor Moderator] Body exists, injecting button now');
-    injectButton();
+    injectWidget();
   } else {
-    console.log('[Nextdoor Moderator] Body does not exist yet, setting up observer');
-    // Body doesn't exist yet, wait for it
     const observer = new MutationObserver(() => {
       if (document.body) {
-        console.log('[Nextdoor Moderator] Body appeared, injecting button');
         observer.disconnect();
-        injectButton();
+        injectWidget();
       }
     });
     observer.observe(document.documentElement, { childList: true });
   }
 }
+
+// ─── Export Thread ────────────────────────────────────────────────────────────
+
+let expandedPostData = null;
+
+function renderMarkdownToHtml(md) {
+  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const inline = s => esc(s)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/_([^_\n]+?)_/g, '<em style="color:#6b7280;">$1</em>');
+
+  return md.split('\n').map(line => {
+    const indent = (line.match(/^( +)/)?.[1]?.length || 0);
+    const pl = indent * 10;
+    const t = line.trimStart();
+
+    if (t.startsWith('### ')) return `<div style="padding-left:${pl}px;margin:10px 0 2px;font-size:13px;font-weight:700;color:#111827;">${inline(t.slice(4))}</div>`;
+    if (t.startsWith('## '))  return `<div style="margin:18px 0 6px;font-size:15px;font-weight:700;color:#111827;border-bottom:1px solid #e5e7eb;padding-bottom:5px;">${inline(t.slice(3))}</div>`;
+    if (t.startsWith('# '))   return `<div style="margin:0 0 14px;font-size:18px;font-weight:800;color:#111827;">${inline(t.slice(2))}</div>`;
+    if (t === '---')           return `<hr style="border:none;border-top:2px solid #e5e7eb;margin:10px 0;">`;
+    if (t === '')              return `<div style="height:5px;"></div>`;
+    return `<div style="padding-left:${pl}px;font-size:13px;color:#374151;line-height:1.6;">${inline(t)}</div>`;
+  }).join('');
+}
+
+function showExportPreview(post) {
+  document.getElementById('nd-export-preview')?.remove();
+  const widget = document.getElementById('nd-widget');
+  if (widget) widget.style.display = 'none';
+
+  const { markdown, totalComments, missingCount } = buildMarkdownFromPostData(post, window.location.href);
+
+  const panel = document.createElement('div');
+  panel.id = 'nd-export-preview';
+  panel.style.cssText = `
+    position: fixed;
+    top: 0; right: 0;
+    width: 420px;
+    height: 100vh;
+    background: #fff;
+    box-shadow: -4px 0 24px rgba(0,0,0,0.18);
+    z-index: 2147483646;
+    display: flex;
+    flex-direction: column;
+    font-family: system-ui, -apple-system, sans-serif;
+  `;
+
+  const tabBtn = (id, label, active) =>
+    `<button id="${id}" style="flex:1; padding:8px 0; font-size:13px; font-weight:600; cursor:pointer; border:none; border-bottom:2px solid ${active ? '#f9fafb' : 'transparent'}; background:transparent; color:${active ? '#f9fafb' : '#9ca3af'}; font-family:system-ui,sans-serif; transition:color 0.15s;">${label}</button>`;
+
+  panel.innerHTML = `
+    <div style="background:#111827; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; flex-shrink:0;">
+      <span style="color:#f9fafb; font-size:14px; font-weight:700; letter-spacing:-0.01em;">Post Panel</span>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <span id="nd-export-count" style="color:#9ca3af; font-size:12px;">${totalComments} comment${totalComments !== 1 ? 's' : ''}</span>
+        <button id="nd-export-close" style="background:none; border:none; color:#9ca3af; font-size:20px; cursor:pointer; line-height:1; padding:0;">&times;</button>
+      </div>
+    </div>
+    <div style="background:#1f2937; display:flex; flex-shrink:0; border-bottom:1px solid #374151;">
+      ${tabBtn('nd-tab-preview', '📄 Preview', true)}
+      ${tabBtn('nd-tab-chat', '💬 Chat', false)}
+    </div>
+    <div id="nd-export-warning" style="background:#fef3c7; border-bottom:1px solid #fcd34d; padding:10px 16px; display:${missingCount > 0 ? 'flex' : 'none'}; gap:8px; align-items:flex-start; flex-shrink:0;">
+      <span style="font-size:16px; line-height:1.3;">⚠️</span>
+      <div id="nd-export-warning-msg" style="font-size:12px; color:#92400e; line-height:1.5;">
+        <strong>${missingCount} repl${missingCount !== 1 ? 'ies' : 'y'} not captured</strong> — this is WYSIWYG.<br>
+        Click "See more replies" in the post first, then re-export.
+      </div>
+    </div>
+    <div id="nd-panel-preview" style="flex:1; overflow-y:auto; padding:16px; background:#f9fafb;">${renderMarkdownToHtml(markdown)}</div>
+    <div id="nd-panel-chat" style="flex:1; display:none; flex-direction:column; overflow:hidden;">
+      <div id="nd-chat-messages" style="flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:10px; background:#f9fafb;"></div>
+      <div style="padding:10px 12px; border-top:1px solid #e5e7eb; background:white; display:flex; gap:8px; align-items:flex-end; flex-shrink:0;">
+        <textarea id="nd-chat-input" rows="1" placeholder="Ask about this post…" style="flex:1; padding:9px 12px; border:1.5px solid #e5e7eb; border-radius:8px; font-family:system-ui,sans-serif; font-size:13px; color:#374151; resize:none; box-sizing:border-box; line-height:1.4; overflow:hidden; max-height:120px;"></textarea>
+        <button id="nd-chat-send" style="padding:9px 14px; background:#111827; color:white; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; font-family:system-ui,sans-serif; flex-shrink:0;">Ask</button>
+      </div>
+    </div>
+    <div id="nd-preview-footer" style="padding:12px 16px; border-top:1px solid #e5e7eb; flex-shrink:0; background:white;">
+      <button id="nd-export-download" style="width:100%; padding:11px; background:#111827; color:white; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit;">Download .md</button>
+    </div>
+  `;
+
+  document.body.appendChild(panel);
+
+  // Tab switching
+  const tabPreview = panel.querySelector('#nd-tab-preview');
+  const tabChat = panel.querySelector('#nd-tab-chat');
+  const viewPreview = panel.querySelector('#nd-panel-preview');
+  const viewChat = panel.querySelector('#nd-panel-chat');
+  const footer = panel.querySelector('#nd-preview-footer');
+  const warning = panel.querySelector('#nd-export-warning');
+
+  const switchTab = (toChat) => {
+    tabPreview.style.borderBottomColor = toChat ? 'transparent' : '#f9fafb';
+    tabPreview.style.color = toChat ? '#9ca3af' : '#f9fafb';
+    tabChat.style.borderBottomColor = toChat ? '#f9fafb' : 'transparent';
+    tabChat.style.color = toChat ? '#f9fafb' : '#9ca3af';
+    viewPreview.style.display = toChat ? 'none' : 'block';
+    viewChat.style.display = toChat ? 'flex' : 'none';
+    footer.style.display = toChat ? 'none' : 'block';
+    if (warning.style.display !== 'none') warning.style.display = toChat ? 'none' : 'flex';
+  };
+
+  tabPreview.addEventListener('click', () => switchTab(false));
+  tabChat.addEventListener('click', () => switchTab(true));
+
+  // Chat logic
+  const chatMessages = panel.querySelector('#nd-chat-messages');
+  const chatInput = panel.querySelector('#nd-chat-input');
+  const chatSend = panel.querySelector('#nd-chat-send');
+  const chatHistory = [];
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+
+  const addBubble = (text, isUser) => {
+    const div = document.createElement('div');
+    div.style.cssText = isUser
+      ? 'background:#111827; color:white; border-radius:10px 10px 2px 10px; padding:9px 13px; font-size:13px; align-self:flex-end; max-width:88%; line-height:1.45; font-family:system-ui,sans-serif; white-space:pre-wrap;'
+      : 'background:white; color:#1f2937; border-radius:10px 10px 10px 2px; padding:9px 13px; font-size:13px; align-self:flex-start; max-width:88%; line-height:1.5; font-family:system-ui,sans-serif; box-shadow:0 1px 3px rgba(0,0,0,0.08);';
+    if (isUser) {
+      div.textContent = text;
+    } else {
+      div.innerHTML = renderMarkdownToHtml(text);
+    }
+    chatMessages.appendChild(div);
+    div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    return div;
+  };
+
+  chatInput.addEventListener('input', () => {
+    chatInput.style.height = 'auto';
+    chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+  });
+  chatInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); chatSend.click(); }
+  });
+
+  chatSend.addEventListener('click', async () => {
+    const question = chatInput.value.trim();
+    if (!question || chatSend.disabled) return;
+
+    addBubble(question, true);
+    chatHistory.push({ role: 'user', content: question });
+    chatInput.value = '';
+    chatInput.style.height = 'auto';
+    chatSend.disabled = true;
+    chatSend.textContent = '…';
+
+    const typingBubble = addBubble('…', false);
+
+    try {
+      const resp = await browser.runtime.sendMessage({
+        action: 'chatAboutPost',
+        question,
+        markdown,
+        history: chatHistory.slice(0, -1),
+      });
+      const answer = resp?.answer || 'No response.';
+      typingBubble.innerHTML = renderMarkdownToHtml(answer);
+      chatHistory.push({ role: 'assistant', content: answer });
+
+      // Token stats
+      const inTok = resp?.inputTokens;
+      const outTok = resp?.outputTokens;
+      if (inTok != null || outTok != null) {
+        totalInputTokens += inTok || 0;
+        totalOutputTokens += outTok || 0;
+        const statsEl = document.createElement('div');
+        statsEl.style.cssText = 'font-size:10px; color:#9ca3af; margin-top:4px; align-self:flex-start; padding-left:2px; font-family:system-ui,sans-serif;';
+        statsEl.textContent = `${(inTok||0).toLocaleString()} in · ${(outTok||0).toLocaleString()} out  |  session: ${totalInputTokens.toLocaleString()} in · ${totalOutputTokens.toLocaleString()} out`;
+        chatMessages.appendChild(statsEl);
+      }
+    } catch (err) {
+      typingBubble.textContent = 'Error: ' + err.message;
+      typingBubble.style.color = '#c62828';
+    }
+
+    chatSend.disabled = false;
+    chatSend.textContent = 'Ask';
+    typingBubble.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+
+  panel.querySelector('#nd-export-close').addEventListener('click', () => {
+    panel.remove();
+    const w = document.getElementById('nd-widget');
+    if (w) w.style.display = 'flex';
+  });
+
+  panel.querySelector('#nd-export-download').addEventListener('click', function() {
+    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `nextdoor-post-${new Date().toISOString().slice(0, 10)}.md`;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    const dlBtn = panel.querySelector('#nd-export-download');
+    dlBtn.textContent = 'Downloaded!';
+    setTimeout(() => { dlBtn.textContent = 'Download .md'; }, 2000);
+  });
+}
+
+async function expandAllReplies(statusBtn) {
+  const overlayOpen = () => !!document.querySelector('button[aria-label="Close expanded post"]');
+  if (!overlayOpen()) return { error: 'No overlay open' };
+
+  const getSeeMoreReplies = () =>
+    Array.from(document.querySelectorAll('[role="button"], button'))
+      .filter(b => /see \d+ more repl/i.test(b.textContent.trim()));
+
+  // "See more comments" is a div[role="button"] on Nextdoor's React SPA
+  const getSeeMoreComments = () =>
+    Array.from(document.querySelectorAll('[role="button"], button'))
+      .find(el =>
+        /see more comments/i.test(el.textContent.trim()) &&
+        el.textContent.trim().length < 25
+      );
+
+  const delay = ms => new Promise(r => setTimeout(r, ms));
+  let totalClicked = 0;
+  const maxRounds = 30;
+
+  for (let round = 0; round < maxRounds; round++) {
+    if (!overlayOpen()) break;
+
+    // PRIORITY 1: Load all top-level comment batches first so all threads are in DOM
+    // before the reply expansion pass begins
+    const commentLoader = getSeeMoreComments();
+    if (commentLoader) {
+      if (statusBtn) statusBtn.textContent = `⏳ more comments…`;
+      commentLoader.click();
+      totalClicked++;
+      await delay(800);
+      continue;
+    }
+
+    // PRIORITY 2: All top-level comments loaded — expand reply threads
+    // Note: "See X more replies" also triggers a PagedComments network fetch,
+    // so we settle 500ms after the batch to let the background merge responses
+    const replyBtns = getSeeMoreReplies();
+    if (replyBtns.length > 0) {
+      if (statusBtn) statusBtn.textContent = `⏳ ${replyBtns.length} reply thread${replyBtns.length !== 1 ? 's' : ''}…`;
+      for (const btn of replyBtns) {
+        if (!overlayOpen()) break;
+        btn.click();
+        totalClicked++;
+        await delay(150);
+      }
+      await delay(500);
+      continue;
+    }
+
+    return { done: true, totalClicked, rounds: round + 1 };
+  }
+
+  return { done: false, warning: 'Hit max rounds — may be incomplete', totalClicked };
+}
+
+
+browser.runtime.onMessage.addListener((message) => {
+  if (message.action === 'expandedPostReady') {
+    expandedPostData = message.post;
+    if (document.getElementById('nd-export-preview')) {
+      refreshExportPreview(expandedPostData);
+    }
+  }
+});
+
+function refreshExportPreview(post) {
+  const panel = document.getElementById('nd-export-preview');
+  if (!panel) return;
+  const { markdown, totalComments, missingCount } = buildMarkdownFromPostData(post, window.location.href);
+  const pre = panel.querySelector('#nd-panel-preview');
+  const scrollTop = pre?.scrollTop || 0;
+  if (pre) {
+    pre.innerHTML = renderMarkdownToHtml(markdown);
+    pre.scrollTop = scrollTop;
+  }
+  const countEl = panel.querySelector('#nd-export-count');
+  if (countEl) countEl.textContent = `${totalComments} comment${totalComments !== 1 ? 's' : ''}`;
+  const warningEl = panel.querySelector('#nd-export-warning');
+  if (warningEl) {
+    if (missingCount > 0) {
+      warningEl.style.display = 'flex';
+      const msg = warningEl.querySelector('#nd-export-warning-msg');
+      if (msg) msg.innerHTML = `<strong>${missingCount} repl${missingCount !== 1 ? 'ies' : 'y'} not captured</strong> — this is WYSIWYG.<br>Click "See more replies" in the post first, then re-export.`;
+    } else {
+      warningEl.style.display = 'none';
+    }
+  }
+  const dlBtn = panel.querySelector('#nd-export-download');
+  if (dlBtn) dlBtn._markdown = markdown;
+}
+
+function buildMarkdownFromPostData(post, pageUrl) {
+  const lines = [];
+  const now = new Date().toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+  console.log('[Export] post keys:', Object.keys(post).join(', '));
+  // shareId = "sharedPost_Sd7GRS9wTTcL" → https://nextdoor.com/p/Sd7GRS9wTTcL
+  const shareToken = post.shareId?.replace(/^sharedPost_/, '');
+  const postUrl = post.shareUrl || post.url
+    || (shareToken ? `https://nextdoor.com/p/${shareToken}` : null)
+    || pageUrl;
+
+  lines.push('# Nextdoor Post Export');
+  lines.push('');
+  lines.push(`**URL:** ${postUrl}`);
+  lines.push(`**Exported:** ${now}`);
+  lines.push('');
+  lines.push('---');
+  lines.push('');
+  lines.push('## Original Post');
+  lines.push('');
+
+  const author = post.author?.displayName || 'Unknown';
+  const content = post.styledBody?.text || post.body || '';
+  const createdAt = post.createdAt?.asDateTime?.relativeTime || '';
+  const neighborhood = post.author?.originationNeighborhood?.shortName || '';
+
+  lines.push(`**Author:** ${author}`);
+  if (createdAt) lines.push(`**Posted:** ${createdAt}`);
+  if (neighborhood) lines.push(`**Neighborhood:** ${neighborhood}`);
+  lines.push('');
+  if (content) { lines.push(content); lines.push(''); }
+
+  if (post.poll) {
+    lines.push(`**[Poll]** ${post.poll.question || ''}`);
+    if (post.poll.description) lines.push(post.poll.description);
+    if (post.poll.options?.length > 0) {
+      lines.push('');
+      post.poll.options.forEach(opt => {
+        lines.push(`- ${opt.label}${opt.voteCount != null ? ` (${opt.voteCount} votes, ${opt.votePercentText}%)` : ''}`);
+      });
+    }
+    lines.push('');
+  }
+
+  const mediaAttachments = post.mediaAttachments || [];
+  if (mediaAttachments.length > 0) {
+    lines.push('**Attachments:**');
+    mediaAttachments.forEach(m => {
+      if (m.type === 'PHOTO' && m.url) lines.push(`- Photo: ${m.url}`);
+      else if (m.type === 'VIDEO') lines.push(`- [Video attachment]`);
+      else if (m.url) lines.push(`- ${m.type}: ${m.url}`);
+    });
+    lines.push('');
+  }
+
+  const commentLines = [];
+  let totalComments = 0;
+  let missingCount = 0;
+
+  function walkComments(edges, depth) {
+    (edges || []).forEach(edge => {
+      const comment = edge.node?.comment;
+      if (!comment) return;
+      totalComments++;
+
+      const cAuthor = comment.author?.displayName || 'Unknown';
+      const cContent = comment.styledBody?.text || comment.body || '';
+      const cTime = comment.createdAt?.asDateTime?.relativeTime || '';
+      const indent = '  '.repeat(depth);
+      const marker = depth > 0 ? '↳ ' : '';
+
+      commentLines.push(`${indent}### ${marker}${cAuthor}`);
+      if (cTime) commentLines.push(`${indent}_${cTime}_`);
+      commentLines.push('');
+      if (cContent) {
+        cContent.split('\n').forEach(ln => commentLines.push(`${indent}${ln}`));
+      }
+      commentLines.push('');
+
+      const replyEdges = edge.node?.replies?.edgesV2 || edge.node?.replies?.edges;
+      // Use pageInfo.totalCount (accurate, reflects merges) instead of stale afterCount
+      const replyTotal = edge.node?.replies?.pageInfo?.totalCount;
+      const replyLoaded = replyEdges?.length || 0;
+      if (replyTotal != null && replyTotal > replyLoaded) {
+        missingCount += replyTotal - replyLoaded;
+      } else if (replyTotal == null) {
+        // Fall back to afterCount only when pageInfo.totalCount isn't available
+        const afterCount = edge.node?.replies?.afterCount || 0;
+        if (afterCount > replyLoaded) missingCount += afterCount - replyLoaded;
+      }
+      walkComments(replyEdges, depth + 1);
+    });
+  }
+
+  const topEdges = post.comments?.pagedComments?.edgesV2 || post.comments?.pagedComments?.edges;
+  const topTotal = post.comments?.pagedComments?.pageInfo?.totalCount;
+  const topLoaded = topEdges?.length || 0;
+  walkComments(topEdges, 0);
+  // Add any missing top-level comments
+  if (topTotal != null && topTotal > topLoaded) {
+    missingCount += topTotal - topLoaded;
+  }
+
+  if (commentLines.length > 0) {
+    lines.push('---');
+    lines.push('');
+    lines.push(`## Comments (${totalComments})`);
+    lines.push('');
+    lines.push(...commentLines);
+  }
+
+  return { markdown: lines.join('\n'), totalComments, missingCount };
+}
+
+// ─── End Export Thread ────────────────────────────────────────────────────────
 
 console.log('[Nextdoor Moderator] Script execution started');
 console.log('[Nextdoor Moderator] readyState:', document.readyState);

@@ -9,7 +9,7 @@ AI-powered moderation assistant for Nextdoor community moderators. This Firefox 
 - **Individual Reviewer Details**: Shows each reviewer's vote with color-coded icons and comments
 - **AI-Powered Analysis**: Independent tag validity assessment (Valid/Doesn't Apply/Borderline)
 - **Additional Context Input**: Optional textarea to describe images, videos, or links for better LLM analysis
-- **Comment Suggestions**: Generates concise moderator comments (5-10 words) explaining vote decisions
+- **Comment Suggestions**: Generates a 1-sentence explanation written to other moderators (not the poster)
 - **Inline Analysis**: Displays AI recommendations directly in the content overlay (no separate popup)
 - **Privacy-First**: All API keys stored locally in `browser.storage.local`, persist across Firefox sessions
 
@@ -56,7 +56,10 @@ For permanent installation without reloading on each Firefox start:
 3. Build extension: `npm run build`
 4. Install permanently from `dist/manifest.json`
 
-**Option 2: Self-signing**
+**Option 2: Self-signed XPI**
+
+The extension includes a Firefox extension ID (`nextdoor-moderator@byteclub.com`) in `manifest.json`, which enables self-signed permanent installation without Developer Edition:
+
 1. Submit to Mozilla Add-ons for signing (can be unlisted/private)
 2. Receive signed `.xpi` file
 3. Install in regular Firefox
@@ -80,7 +83,7 @@ This watches for file changes and rebuilds automatically. Still need to click "R
 ### Supported LLM Providers
 
 - **OpenAI**: GPT-4, GPT-3.5-turbo, etc.
-- **Anthropic**: Claude 3.5 Sonnet, Claude 3 Opus, etc.
+- **Anthropic**: claude-sonnet-4-6, claude-opus-4-8, etc.
 - **Custom**: Any OpenAI-compatible API endpoint
 
 ## Usage
@@ -107,7 +110,7 @@ This watches for file changes and rebuilds automatically. Still need to click "R
 5. **Click "Analyze with AI":**
    - LLM analyzes content independently
    - Analysis appears inline below the button
-   - Includes: Tag Analysis, Vote Suggestion, Why, Comment Suggestion, Moderator Q&A
+   - Includes: Tag Analysis, Vote Suggestion, Reasoning, Comment Suggestion, Moderator Q&A
 
 6. **Make your decision:**
    - Review AI recommendation and reasoning

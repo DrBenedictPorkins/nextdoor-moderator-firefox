@@ -291,6 +291,219 @@ async function saveLLMConversation(filename, content) {
 /**
  * Call LLM API to analyze content
  */
+async function callLLMRaw(systemPrompt, userPrompt, maxTokens = 512) {
+  const isAnthropic = CONFIG.apiEndpoint.includes('anthropic.com');
+  const headers = { 'Content-Type': 'application/json' };
+  let body;
+  if (isAnthropic) {
+    headers['x-api-key'] = CONFIG.apiKey;
+    headers['anthropic-version'] = '2023-06-01';
+    headers['anthropic-dangerous-direct-browser-access'] = 'true';
+    body = JSON.stringify({ model: CONFIG.model, max_tokens: maxTokens, system: systemPrompt, messages: [{ role: 'user', content: userPrompt }] });
+  } else {
+    headers['Authorization'] = `Bearer ${CONFIG.apiKey}`;
+    body = JSON.stringify({ model: CONFIG.model, max_tokens: maxTokens, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }], temperature: 0.7 });
+  }
+  const resp = await fetch(CONFIG.apiEndpoint, { method: 'POST', headers, body });
+  if (!resp.ok) throw new Error(`LLM error: ${resp.status}`);
+  const data = await resp.json();
+  return data.choices?.[0]?.message?.content || data.content?.[0]?.text || '';
+}
+
+async function callLLMQuestion(question, reviewData, analysisText, history = []) {
+  const { originalPost, flaggedContent } = reviewData || {};
+  const postContent = originalPost?.content || '(no text)';
+  const flaggedContent_ = flaggedContent?.content || (flaggedContent?.type === 'post' ? postContent : '');
+
+  const systemPrompt = `You are an expert on Nextdoor community guidelines helping a moderator think through a decision.
+
+CRITICAL RULES:
+- No praise, no filler, no "thank you for sharing". Be direct and concise.
+- Genuinely update your position when the moderator presents a valid argument. Do NOT restate the same hedged conclusion with different words.
+- If they are right, say so and explain why. If they are wrong, explain specifically which guideline text is breached.
+- Only maintain a removal recommendation if you can point to specific guideline text the content clearly breaches.
+
+OUTPUT FORMAT:
+- Answer directly in 2-4 sentences max.
+- If your recommendation changes from the initial analysis, end your response with a new line in EXACTLY this format:
+  **Revised: [Keep/Maybe Remove/Remove] — [one sentence comment for moderators that names the specific concern AND explains why it doesn't rise to a violation, e.g. "The tone is critical but does not rise to the level of disrespect or public shaming"]**
+- The comment must be specific to this content — never generic like "does not clearly violate guidelines"
+- If your recommendation has not changed, do NOT include a Revised line.
+
+${NEXTDOOR_GUIDELINES}`;
+
+  const context = `Post content: "${postContent}"${flaggedContent_ && flaggedContent_ !== postContent ? `\nFlagged content: "${flaggedContent_}"` : ''}${analysisText ? `\n\nInitial AI analysis:\n${analysisText.substring(0, 600)}` : ''}`;
+
+  const isAnthropic = CONFIG.apiEndpoint.includes('anthropic.com');
+  const headers = { 'Content-Type': 'application/json' };
+  if (isAnthropic) {
+    headers['x-api-key'] = CONFIG.apiKey;
+    headers['anthropic-version'] = '2023-06-01';
+  } else {
+    headers['Authorization'] = `Bearer ${CONFIG.apiKey}`;
+  }
+
+  // Build message array with history
+  const messages = [
+    { role: 'user', content: context },
+    { role: 'assistant', content: 'Understood. I have reviewed the post and the initial analysis. Ask me anything.' },
+    ...history,
+    { role: 'user', content: question },
+  ];
+
+  const body = isAnthropic
+    ? JSON.stringify({ model: CONFIG.model, max_tokens: 600, system: systemPrompt, messages })
+    : JSON.stringify({ model: CONFIG.model, max_tokens: 600, temperature: 0.4, messages: [{ role: 'system', content: systemPrompt }, ...messages] });
+
+  const resp = await fetch(CONFIG.apiEndpoint, { method: 'POST', headers, body });
+  if (!resp.ok) throw new Error(`LLM error: ${resp.status}`);
+  const data = await resp.json();
+  return data.choices?.[0]?.message?.content || data.content?.[0]?.text || '';
+}
+
+async function callLLMChat(question, markdown, history = []) {
+  const systemPrompt = `You are an expert on Nextdoor community guidelines helping a moderator evaluate posts and comments.
+
+CRITICAL RULES:
+- Be direct and concise. No praise, no filler, no preamble.
+- When asked whether something violates guidelines, cite the specific guideline text that applies (or doesn't).
+- "Keep" is the default when in doubt — only recommend removal if a specific guideline is clearly breached.
+- Genuinely update your position when presented with a valid argument. Do NOT restate the same conclusion with different words.
+- If the content clearly does NOT violate guidelines, say so plainly and explain why.
+
+${NEXTDOOR_GUIDELINES}`;
+
+  const isAnthropic = CONFIG.apiEndpoint.includes('anthropic.com');
+  const headers = { 'Content-Type': 'application/json' };
+  if (isAnthropic) {
+    headers['x-api-key'] = CONFIG.apiKey;
+    headers['anthropic-version'] = '2023-06-01';
+  } else {
+    headers['Authorization'] = `Bearer ${CONFIG.apiKey}`;
+  }
+
+  const messages = [
+    { role: 'user', content: `Here is the full post and all its comments:\n\n${markdown}` },
+    { role: 'assistant', content: 'Got it — I have read the full post and all comments. Ask me anything.' },
+    ...history,
+    { role: 'user', content: question },
+  ];
+
+  const body = isAnthropic
+    ? JSON.stringify({ model: CONFIG.model, max_tokens: 800, system: systemPrompt, messages })
+    : JSON.stringify({ model: CONFIG.model, max_tokens: 800, temperature: 0.4, messages: [{ role: 'system', content: systemPrompt }, ...messages] });
+
+  const resp = await fetch(CONFIG.apiEndpoint, { method: 'POST', headers, body });
+  if (!resp.ok) throw new Error(`LLM error: ${resp.status}`);
+  const data = await resp.json();
+  const text = data.choices?.[0]?.message?.content || data.content?.[0]?.text || '';
+  const usage = data.usage || {};
+  const inputTokens = usage.input_tokens ?? usage.prompt_tokens ?? null;
+  const outputTokens = usage.output_tokens ?? usage.completion_tokens ?? null;
+  return { text, inputTokens, outputTokens };
+}
+
+async function callLLMForVariations(currentComment, vote) {
+  const sys = `You are helping a Nextdoor community moderator write a short comment for their ${vote || 'keep'} vote. You output ONLY raw JSON, no markdown, no explanation.`;
+  const user = `Current comment: "${currentComment}"\n\nGenerate exactly 8 variations of this comment. Keep a similar tone and intent but vary the phrasing. Each under 20 words. Output ONLY a valid JSON array of 8 strings. Example: ["comment 1", "comment 2", "comment 3", "comment 4", "comment 5", "comment 6", "comment 7", "comment 8"]`;
+  const raw = await callLLMRaw(sys, user, 600);
+  // Strip markdown code fences if present, then extract JSON array
+  const cleaned = raw.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
+  const match = cleaned.match(/\[[\s\S]*\]/);
+  if (!match) return [];
+  try {
+    const result = JSON.parse(match[0]);
+    return Array.isArray(result) ? result : [];
+  } catch {
+    return [];
+  }
+}
+
+async function callLLMSharpResponses(content, imageUrls = []) {
+  const isAnthropic = CONFIG.apiEndpoint.includes('anthropic.com');
+  const sys = `You are a sharp, unapologetic commenter who calls out bad takes, hidden bias, racism, sexism, classism, and lazy thinking — directly and sarcastically. You don't sugarcoat. Output ONLY a raw JSON array of strings, no markdown, no explanation.
+
+CRITICAL: Every comment you generate MUST comply with the Nextdoor community guidelines below. Do not generate comments that are uncivil, discriminatory, constitute public shaming, or otherwise violate these guidelines — even if the user's raw reaction is heated.
+
+${NEXTDOOR_GUIDELINES}`;
+  const textPrompt = `${content.body ? `Post/context: "${content.body}"\n` : ''}${imageUrls.length > 0 ? '(see image above)\n' : ''}${content.reaction ? `\nThe user's raw reaction: "${content.reaction}"\n\nRephrase their reaction into 6 articulate, sharp comment options that capture their intent but are suited for a public comment. Keep the edge, lose the profanity. Range from pointed to sardonic. Each under 30 words.` : `\nGenerate 6 sharp, pointed responses to this post. Call out any bias, bad logic, or hypocrisy. Range from dry eyeroll to savage takedown. Each under 25 words.`}
+
+Output ONLY a valid JSON array of 6 strings.`;
+
+  const headers = { 'Content-Type': 'application/json' };
+  let body;
+
+  if (isAnthropic) {
+    headers['x-api-key'] = CONFIG.apiKey;
+    headers['anthropic-version'] = '2023-06-01';
+    headers['anthropic-dangerous-direct-browser-access'] = 'true';
+    const userContent = imageUrls.length > 0
+      ? [
+          ...imageUrls.map(url => {
+            if (url.startsWith('data:')) {
+              const [meta, data] = url.split(',');
+              const mediaType = meta.split(':')[1].split(';')[0];
+              return { type: 'image', source: { type: 'base64', media_type: mediaType, data } };
+            }
+            return { type: 'image', source: { type: 'url', url } };
+          }),
+          { type: 'text', text: textPrompt },
+        ]
+      : textPrompt;
+    body = JSON.stringify({ model: CONFIG.model, max_tokens: 500, system: sys, messages: [{ role: 'user', content: userContent }] });
+  } else {
+    headers['Authorization'] = `Bearer ${CONFIG.apiKey}`;
+    const userContent = imageUrls.length > 0
+      ? [
+          ...imageUrls.map(url => ({ type: 'image_url', image_url: { url } })),
+          { type: 'text', text: textPrompt },
+        ]
+      : textPrompt;
+    body = JSON.stringify({ model: CONFIG.model, max_tokens: 500, messages: [{ role: 'system', content: sys }, { role: 'user', content: userContent }], temperature: 0.8 });
+  }
+
+  const resp = await fetch(CONFIG.apiEndpoint, { method: 'POST', headers, body });
+  if (!resp.ok) throw new Error(`LLM error: ${resp.status}`);
+  const data = await resp.json();
+  const raw = data.choices?.[0]?.message?.content || data.content?.[0]?.text || '';
+  const cleaned = raw.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
+  const match = cleaned.match(/\[[\s\S]*\]/);
+  if (!match) return [];
+  try {
+    const result = JSON.parse(match[0]);
+    return Array.isArray(result) ? result : [];
+  } catch {
+    return [];
+  }
+}
+
+async function fetchAndResizeImage(url, maxSize = 512) {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const blob = await response.blob();
+    return new Promise((resolve) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(blob);
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        resolve(dataUrl.split(',')[1]);
+      };
+      img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve(null); };
+      img.src = objectUrl;
+    });
+  } catch (err) {
+    console.warn('[BG] Image resize failed:', url, err.message);
+    return null;
+  }
+}
+
 async function analyzeWithLLM(originalPost, flaggedContent, conversationThread = [], additionalContext = '', imageUrls = []) {
   if (!CONFIG.apiKey || !CONFIG.apiEndpoint) {
     throw new Error('API configuration not set. Please configure in extension popup.');
@@ -331,150 +544,144 @@ NOTE: If the moderator's context contains opinions, leading questions, or sugges
   // Extract moderation details
   const moderationDetails = flaggedContent?.moderationDetails || {};
 
-  // Build report summary with vote counts and tags
+  // Build report tags (allegation only — no names, no opinions)
   let reportSummary = '';
   if (moderationDetails.reports && moderationDetails.reports.length > 0) {
-    reportSummary += `\n\nREPORTS (${moderationDetails.totalReports || 0} total):\n`;
+    const tags = [];
     moderationDetails.reports.forEach((report) => {
-      if (report.type === 'individual_report') {
-        const voteLabel = report.voteType === 'keep' ? 'Keep' : report.voteType === 'remove' ? 'Remove' : report.voteType === 'abstain' ? 'Maybe Remove' : 'Report';
-        reportSummary += `- ${report.reporterName} (${voteLabel})`;
-        if (report.reportType) reportSummary += `: "${report.reportType}"`;
-        if (report.additionalNote) reportSummary += ` - Comment: "${report.additionalNote}"`;
-        reportSummary += '\n';
-      } else if (report.type === 'row') {
-        reportSummary += `- ${report.reason}: ${report.count}\n`;
-      } else if (report.type === 'section') {
-        reportSummary += `  ${report.text}\n`;
+      if (report.type === 'individual_report' && report.reportType) {
+        if (!tags.includes(report.reportType)) tags.push(report.reportType);
+      } else if (report.type === 'row' && report.reason) {
+        if (!tags.includes(report.reason)) tags.push(report.reason);
       }
     });
+    if (tags.length > 0) {
+      reportSummary = `\n\nALLEGED VIOLATION (what reporters flagged — may be incorrect, evaluate independently):\n${tags.map(t => `- "${t}"`).join('\n')}\n`;
+    }
   }
 
-  // Build votes summary with comments
+  // Build vote counts only (no names, no comments)
   let votesSummary = '';
   if (moderationDetails.votes && moderationDetails.votes.length > 0) {
-    votesSummary += `\n\nCOMMUNITY VOTES (${moderationDetails.totalVotes || 0} total):\n`;
+    const counts = { keep: 0, remove: 0, abstain: 0 };
     moderationDetails.votes.forEach((vote) => {
-      if (vote.type === 'individual_vote') {
-        const voteLabel = vote.voteType === 'keep' ? 'Keep' : vote.voteType === 'remove' ? 'Remove' : vote.voteType === 'abstain' ? 'Maybe Remove' : 'Unknown';
-        votesSummary += `- ${vote.voterName} (${voteLabel})`;
-        if (vote.additionalNote) votesSummary += ` - Comment: "${vote.additionalNote}"`;
-        votesSummary += '\n';
+      if (vote.type === 'individual_vote' && vote.voteType) {
+        counts[vote.voteType] = (counts[vote.voteType] || 0) + 1;
       } else if (vote.type === 'row') {
-        votesSummary += `- ${vote.reason}: ${vote.count}\n`;
+        // aggregated row format
+        const label = vote.reason?.toLowerCase();
+        if (label?.includes('keep')) counts.keep += (vote.count || 0);
+        else if (label?.includes('remove')) counts.remove += (vote.count || 0);
+        else if (label?.includes('maybe') || label?.includes('abstain')) counts.abstain += (vote.count || 0);
       }
     });
-  }
-
-  // Build notes summary
-  let notesSummary = '';
-  if (moderationDetails.notes && moderationDetails.notes.length > 0) {
-    notesSummary += `\n\nMODERATOR NOTES (${moderationDetails.totalNotes || 0} total):\n`;
-    moderationDetails.notes.forEach((note, idx) => {
-      notesSummary += `${idx + 1}. ${note.text}\n`;
-    });
+    const total = counts.keep + counts.remove + counts.abstain;
+    if (total > 0) {
+      const parts = [];
+      if (counts.remove > 0) parts.push(`${counts.remove} Remove`);
+      if (counts.abstain > 0) parts.push(`${counts.abstain} Maybe Remove`);
+      if (counts.keep > 0) parts.push(`${counts.keep} Keep`);
+      votesSummary = `\n\nMODERATOR VOTE SIGNAL (counts only — for context, not to be followed): ${parts.join(', ')}\n`;
+    }
   }
 
   const prompt = `You are an independent content moderator analyzing flagged content from a Nextdoor community moderation queue.
 
 CRITICAL INSTRUCTIONS:
-• Your analysis must be INDEPENDENT - do not blindly follow reporter tags or voting trends
-• Many reports are automated or reflect personal disagreements rather than actual guideline violations
-• Public shaming tags are frequently misapplied to legitimate policy critiques of public figures
-• Political discourse about elected officials or candidates is generally permitted as long as it remains respectful
-• Only recommend removal if the content CLEARLY violates specific guidelines
+• Evaluate the content independently against the guidelines — your conclusion must be based on the content itself
+• The "ALLEGED VIOLATION" field shows what reporters flagged — it may be wrong. Evaluate ALL guideline categories regardless, and report the actual violation if one exists (even if different from what was alleged)
+• The "MODERATOR VOTE SIGNAL" shows vote counts only — use it as a prompt to look carefully, NOT as a verdict to follow
+• Only recommend removal if the content CLEARLY violates a specific guideline
 • IMPORTANT: Voting to remove content that does NOT violate the guidelines is itself a policy violation. Err on the side of Keep.
 • The guidelines do NOT require posts to have "substance," be well-argued, or provide evidence — short opinions are allowed
 • Do NOT penalize brevity, vagueness, or lack of detail — these are not violations
 • "Borderline" means the content is genuinely ambiguous against a SPECIFIC guideline, not that it is low-effort or vague
 • Your vote must be the SAME regardless of how many times you analyze the same content — consistency matters
 • Do NOT remove old or expired posts — the newsfeed serves as an archive
-• Sensitive reports (misinformation, discrimination, racial profiling) go directly to Nextdoor Support, not community moderators
+• Sensitive content (misinformation, discrimination, racial profiling) goes directly to Nextdoor Support, not community moderators
+• Political discourse about elected officials or candidates is generally permitted as long as it remains respectful
+• Evaluate only whether THIS content violates the guidelines — not whether it describes or accuses others of violations
 
-IMPORTANT - FOCUS YOUR ANALYSIS:
-- Your vote should ONLY evaluate the "FLAGGED CONTENT" below
-- Do NOT vote on whether other posts/comments in the thread violate guidelines
-- Tags and reports apply ONLY to the flagged content
+FOCUS YOUR ANALYSIS:
+- Evaluate ONLY the "FLAGGED CONTENT" below
+- Do NOT vote on other posts/comments in the thread
 
 **If the flagged content is a RESPONSE/COMMENT:**
-- The "RESPONSE RELATIONSHIP" section shows what it's DIRECTLY responding to
-- **CRITICAL**: Analyze the flagged content's tone, intent, and appropriateness specifically in relation to the comment it's responding to
-- Consider: Is this a proportional response? Does it attack the commenter rather than address their point? Is there veiled aggression, sarcasm, or dismissiveness?
+- Analyze its tone and appropriateness in relation to the comment it's responding to
+- Consider: Is this a proportional response? Does it attack the person rather than the point?
 
 **If the flagged content is an ORIGINAL POST:**
 - Analyze it on its own merits against the guidelines
-- The conversation thread (if any) provides context about community reaction but does not affect whether the original post violates guidelines
 
 ${NEXTDOOR_GUIDELINES}
 
 ORIGINAL POST (for context only):
 Author: ${originalPost?.author || 'Unknown'}
-Content: ${originalPost?.content || 'Not available'}
+Content: ${originalPost?.content || (originalPost?.imageUrls?.length > 0 ? '(image only — see attached image above)' : 'Not available')}
 ${threadText}
 ${parentCommentInfo && parentCommentInfo.depth >= 0 ?
 `
 RESPONSE RELATIONSHIP:
-The flagged content below is responding to ${parentCommentInfo.author}'s comment:
+The flagged content is responding to ${parentCommentInfo.author}'s comment:
 "${parentCommentInfo.content}"
-
-Focus your analysis primarily on the flagged content and its relationship to this specific comment. The entire conversation thread above provides background context, but evaluate whether the flagged response is appropriate given what it's responding to.
 ` :
-'\nThe flagged content below is responding directly to the original post.\n'}
+'\nThe flagged content is responding directly to the original post.\n'}
 FLAGGED CONTENT (this is what you are evaluating):
 Author: ${flaggedContent?.author || 'Unknown'}
-Content: ${flaggedContent?.content || 'Not available'}
-${additionalContextText}${reportSummary}${votesSummary}${notesSummary}
+Content: ${flaggedContent?.content || (imageUrls.length > 0 ? '(image only — see attached image above)' : 'Not available')}
+${additionalContextText}${reportSummary}${votesSummary}
 
 YOUR ANALYSIS TASK:
 
-Step 1 - EVALUATE EACH TAG INDEPENDENTLY:
-For each flag/tag applied, determine if it is:
-• "Valid" = Content clearly violates the specific guideline (tone, target, intent, context all match the violation criteria)
-• "Doesn't Apply" = Content does NOT meet the violation criteria for this tag
-• "Borderline" = Ambiguous; may partially align but mitigating context exists
+Step 1 - SCAN AGAINST EACH GUIDELINE CATEGORY:
+For each category below, assess whether the flagged content violates it:
+• "Valid" = Content clearly violates this guideline
+• "Doesn't Apply" = No violation
+• "Borderline" = Genuinely ambiguous — partially applies but mitigating context exists
 
-For each tag, ask yourself:
-- Which specific guideline does this tag enforce?
-- Does the content target a private individual or a public figure/candidate?
-- Is this a personal attack or a policy/ideology critique?
-- Is the tone genuinely disrespectful or merely critical/disagreeing?
-- Does context justify the content (political debate, community issue discussion)?
+Categories to check:
+- Respectfulness: personal attacks, public shaming of a private individual, threats, OR overall tone that mocks/belittles/demeans a specific neighbor — evaluate the full message in context, not individual words; mark Borderline if tone is ambiguous, Valid only if mocking intent is clear
+- Discrimination: racism, sexism, homophobia, or other bias against a protected group
+- Harmful activity: dangerous information, sharing someone's private address/personal details, fraud, spam
+- Topic placement: national politics/religion posted in the main feed outside a dedicated group
 
 Step 2 - MAKE YOUR VOTE DECISION:
-Per Nextdoor: "Remove" = content violates guidelines and should be removed. "Keep" = content does not violate guidelines. "Maybe remove" = you're not sure how to handle the post. Voting to remove content that does NOT violate guidelines is itself a policy violation.
-Based on your tag analysis — follow this decision tree EXACTLY, no exceptions:
-• If ALL tags are "Doesn't Apply" → Vote = KEEP
-• If ANY tag is "Valid" → Vote = REMOVE
-• If ANY tag is "Borderline" (and none are "Valid") → Vote = MAYBE REMOVE — this is MANDATORY, not optional. You MAY NOT vote Keep when any tag is Borderline.
-• Political speech criticizing public figures should generally be Keep unless clearly violating respect guidelines
+Per Nextdoor: "Remove" = clear violation. "Keep" = no violation. "Maybe remove" = genuinely unsure.
+• If ALL categories are "Doesn't Apply" → Vote = KEEP
+• If ANY category is "Valid" → Vote = REMOVE
+• If ANY category is "Borderline" (and none are "Valid") → Vote = MAYBE REMOVE
 • A post being short, vague, or "low quality" is NEVER grounds for removal or Maybe Remove
 
-STRICT RULE: Your vote MUST match your tag assessments. If you rated a tag Borderline, you cannot vote Keep. If you find yourself wanting to vote Keep despite a Borderline tag, re-evaluate whether the tag is actually "Doesn't Apply" instead.
+STRICT RULE: Your vote MUST match your guideline scan. If you rated something Borderline, you cannot vote Keep — re-evaluate whether it's actually "Doesn't Apply" instead.
 
 Step 3 - FORMAT YOUR RESPONSE (be concise, no filler):
 
-**Tag Analysis:**
-| Tag | Guideline | Assessment | Reasoning |
-|-----|-----------|------------|-----------|
-[One row per tag. Keep reasoning to 1 short sentence.]
+**Guideline Scan:**
+| Category | Assessment | Reasoning |
+|----------|------------|-----------|
+[One row per category. Keep reasoning to 1 short sentence. Omit categories that clearly don't apply.]
 
 **Vote Suggestion:** [Keep | Remove | Maybe Remove]
 
-**Why:** [1-2 sentences max. Must match your tag analysis.]
+**Reasoning:** [2-3 sentences explaining the vote. Cite the specific guideline NAME — NEVER use internal numbering. Must match your scan.]
 
-**Comment Suggestion:** [5-10 word phrase, e.g. "civil political opinion - no violation"]
-
-**Optional Note:** [1 short sentence the moderator can paste into the "Optional Note" field when submitting their vote. Should directly justify the vote in a neutral, professional tone. IMPORTANT: Use guideline NAMES (e.g. "Be respectful to your neighbors", "Discuss important topics in the right place", "Do not discriminate") — NEVER use internal numbering like "Guideline 1" or "Guideline 3".]
+**Comment Suggestion:** [1 short sentence a moderator writes to OTHER moderators explaining their vote — NOT a message to the poster. Factual. E.g. "No violation — civil local opinion." or "Reseller commercial activity, not a personal sale."]
 ${hasAdditionalContext ? '\n**Moderator Notes:** [Brief response to moderator context]' : ''}
 
-IMPORTANT: Be brief. Your vote MUST match your tag analysis.`;
+IMPORTANT: Be brief. Your vote MUST match your guideline scan.`;
 
-  // Build user message content — array (with image URLs) or plain string
-  const userContent = imageUrls.length > 0
-    ? [
-        ...imageUrls.map(url => ({ type: 'image_url', image_url: { url } })),
-        { type: 'text', text: prompt },
-      ]
+  // Resize images before sending to reduce token cost
+  const resizedB64 = imageUrls.length > 0
+    ? (await Promise.all(imageUrls.map(url => fetchAndResizeImage(url)))).filter(Boolean)
+    : [];
+
+  // Build user message content — array (with images) or plain string
+  const imageBlocks = resizedB64.length > 0
+    ? resizedB64.map(b64 => ({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } }))
+    : imageUrls.map(url => ({ type: 'image_url', image_url: { url } })); // fallback to raw URL
+
+  const userContent = imageBlocks.length > 0
+    ? [...imageBlocks, { type: 'text', text: prompt }]
     : prompt;
 
   // Build request body
@@ -550,11 +757,16 @@ ${JSON.stringify(requestBody, null, 2)}
       if (Array.isArray(msg.content)) {
         return {
           ...msg,
-          content: msg.content.map(block =>
-            block.type === 'image_url'
-              ? { type: 'image', source: { type: 'url', url: block.image_url.url } }
-              : block
-          ),
+          content: msg.content.map(block => {
+            if (block.type !== 'image_url') return block;
+            const url = block.image_url.url;
+            if (url.startsWith('data:')) {
+              const [header, data] = url.split(',');
+              const mediaType = header.replace('data:', '').replace(';base64', '');
+              return { type: 'image', source: { type: 'base64', media_type: mediaType, data } };
+            }
+            return { type: 'image', source: { type: 'url', url } };
+          }),
         };
       }
       return msg;
@@ -680,6 +892,65 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     return true; // Keep channel open for async response
   }
 
+  if (message.action === 'chatAboutPost') {
+    await loadConfig();
+    if (!CONFIG.apiKey || !CONFIG.apiEndpoint) return { success: false, answer: 'No API configured.' };
+    try {
+      const { text, inputTokens, outputTokens } = await callLLMChat(message.question, message.markdown, message.history || []);
+      return { success: true, answer: text, inputTokens, outputTokens };
+    } catch (error) {
+      return { success: false, answer: 'Error: ' + error.message };
+    }
+  }
+
+  if (message.action === 'askAboutPost') {
+    await loadConfig();
+    if (!CONFIG.apiKey || !CONFIG.apiEndpoint) return { success: false, answer: 'No API configured.' };
+    try {
+      const answer = await callLLMQuestion(message.question, message.reviewData, message.analysisText, message.history || []);
+      return { success: true, answer };
+    } catch (error) {
+      return { success: false, answer: 'Error: ' + error.message };
+    }
+  }
+
+  if (message.action === 'sharpResponses') {
+    await loadConfig();
+    if (!CONFIG.apiKey || !CONFIG.apiEndpoint) return { success: false, responses: [] };
+    try {
+      const responses = await callLLMSharpResponses(message.content, message.imageUrls || []);
+      return { success: true, responses };
+    } catch (error) {
+      return { success: false, responses: [], error: error.message };
+    }
+  }
+
+  if (message.action === 'generateCommentVariations') {
+    await loadConfig();
+    if (!CONFIG.apiKey || !CONFIG.apiEndpoint) return { success: false, error: 'No API configured' };
+    try {
+      const variations = await callLLMForVariations(message.currentComment, message.vote);
+      return { success: true, variations };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  if (message.action === 'getPostData') {
+    const tabId = sender.tab?.id;
+    const cache = postDataCache.get(tabId);
+    const postData = cache?.get(String(message.postId));
+    return { success: !!postData, postData: postData || null };
+  }
+
+  if (message.action === 'getLastExpandedPost') {
+    const tabId = sender.tab?.id;
+    const postId = lastExpandedPostId.get(tabId);
+    const cache = postDataCache.get(tabId);
+    const entry = postId ? cache?.get(postId) : null;
+    return { success: !!entry, post: entry?.post || null };
+  }
+
   if (message.action === 'saveConfig') {
     try {
       await saveConfig(message.config);
@@ -690,6 +961,10 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.action === 'getGuidelines') {
+    return { guidelines: NEXTDOOR_GUIDELINES };
+  }
+
   if (message.action === 'getConfig') {
     await loadConfig();
     sendResponse({ success: true, config: CONFIG });
@@ -697,110 +972,202 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   }
 });
 
-// Store captured API responses
-const capturedApiData = new Map(); // Map of tabId -> API response data
+// ModerationFeed data (latest per tab)
+const capturedApiData = new Map(); // Map<tabId, apiResponse>
 
-/**
- * Intercept API responses using webRequest API
- * This is the proper, clean way to intercept network requests in extensions
- */
+// Per-tab post cache keyed by post ID and legacy ID
+const postDataCache = new Map(); // Map<tabId, Map<postId, {post, feedItem}>>
+
+// Tracks which post the user most recently expanded per tab
+const lastExpandedPostId = new Map(); // Map<tabId, postId string>
+
+function cachePostsFromResponse(tabId, data) {
+  const entries = [];
+
+  function tryFeedItems(feedItems) {
+    if (!Array.isArray(feedItems)) return;
+    feedItems.forEach(item => {
+      const post = item.post;
+      if (!post) return;
+      const entry = { post, feedItem: item };
+      if (post.id) entries.push([String(post.id), entry]);
+      if (item.legacyAnalyticsId) entries.push([String(item.legacyAnalyticsId), entry]);
+      console.log('[Cache] storing post.id:', post.id, '| legacyAnalyticsId:', item.legacyAnalyticsId, '| author:', post.author?.displayName);
+    });
+  }
+
+  const me = data?.data?.me;
+  if (me) {
+    // Walk all keys under `me` — handles any feed operation name (ModerationFeed, PersonalizedFeed, etc.)
+    Object.values(me).forEach(val => {
+      if (val && typeof val === 'object') {
+        tryFeedItems(val.feedItems);
+        // Some feeds nest under edges
+        if (Array.isArray(val.edges)) {
+          val.edges.forEach(edge => tryFeedItems(edge?.node?.feedItems));
+        }
+      }
+    });
+  }
+
+  // ExpandedFeedItemStory — single feedItem with full comment tree
+  const expandedItem = data?.data?.feedItem;
+  if (expandedItem?.post?.id) {
+    const entry = { post: expandedItem.post, feedItem: expandedItem };
+    entries.push([String(expandedItem.post.id), entry]);
+    if (expandedItem.legacyAnalyticsId) entries.push([String(expandedItem.legacyAnalyticsId), entry]);
+    console.log('[Cache] ExpandedFeedItemStory post.id:', expandedItem.post.id, '| legacyAnalyticsId:', expandedItem.legacyAnalyticsId);
+  }
+
+  const directPost = data?.data?.post;
+  if (directPost?.id) {
+    const entry = { post: directPost, feedItem: null };
+    entries.push([String(directPost.id), entry]);
+    if (directPost.legacyId) entries.push([String(directPost.legacyId), entry]);
+  }
+
+  if (entries.length > 0) {
+    if (!postDataCache.has(tabId)) postDataCache.set(tabId, new Map());
+    const cache = postDataCache.get(tabId);
+    entries.forEach(([key, val]) => cache.set(key, val));
+  }
+}
+
+function mergePagedComments(tabId, data) {
+  const pagedComments = data?.data?.pagedComments;
+  const newEdges = pagedComments?.edgesV2;
+  if (!Array.isArray(newEdges) || newEdges.length === 0) return;
+
+  const cursor = pagedComments.pageInfo?.startCursor || pagedComments.pageInfo?.endCursor;
+  if (!cursor) return;
+
+  let cursorData;
+  try {
+    cursorData = JSON.parse(atob(cursor));
+  } catch {
+    return;
+  }
+
+  const postId = String(cursorData.post_id);
+  const parentCommentId = cursorData.parent_comment_id ? String(cursorData.parent_comment_id) : null;
+
+  const cache = postDataCache.get(tabId);
+  if (!cache) return;
+  const entry = cache.get(postId);
+  if (!entry) return;
+
+  const post = entry.post;
+
+  function appendDeduped(targetArray, edges) {
+    const seen = new Set(targetArray.map(e => e.node?.comment?.id).filter(Boolean));
+    edges.forEach(e => {
+      if (!seen.has(e.node?.comment?.id)) targetArray.push(e);
+    });
+  }
+
+  if (!parentCommentId) {
+    if (!post.comments) post.comments = {};
+    if (!post.comments.pagedComments) post.comments.pagedComments = {};
+    if (!Array.isArray(post.comments.pagedComments.edgesV2)) post.comments.pagedComments.edgesV2 = [];
+    appendDeduped(post.comments.pagedComments.edgesV2, newEdges);
+  } else {
+    function findAndMerge(edges) {
+      if (!Array.isArray(edges)) return false;
+      for (const edge of edges) {
+        const comment = edge.node?.comment;
+        if (!comment) continue;
+        if (String(comment.id) === parentCommentId || String(comment.legacyCommentId) === parentCommentId) {
+          if (!edge.node.replies) edge.node.replies = {};
+          if (!Array.isArray(edge.node.replies.edgesV2)) edge.node.replies.edgesV2 = [];
+          appendDeduped(edge.node.replies.edgesV2, newEdges);
+          return true;
+        }
+        if (findAndMerge(edge.node?.replies?.edgesV2)) return true;
+      }
+      return false;
+    }
+    findAndMerge(post.comments?.pagedComments?.edgesV2);
+  }
+
+  // Only notify content script if this is still the active expanded post
+  if (lastExpandedPostId.get(tabId) === postId) {
+    browser.tabs.sendMessage(tabId, {
+      action: 'expandedPostReady',
+      post: entry.post,
+      legacyAnalyticsId: entry.feedItem?.legacyAnalyticsId,
+    }).catch(() => {});
+  }
+}
+
+// Single broad interceptor for all Nextdoor GraphQL API calls
 browser.webRequest.onBeforeRequest.addListener(
   (details) => {
-    console.log('[Background] ===== ModerationFeed API Request Detected =====');
-    console.log('[Background] URL:', details.url);
-    console.log('[Background] Request ID:', details.requestId);
-    console.log('[Background] Tab ID:', details.tabId);
-    console.log('[Background] Type:', details.type);
-    console.log('[Background] Method:', details.method);
+    const isModerationFeed = details.url.includes('/ModerationFeed');
 
-    // Immediately notify content script that API call started
-    browser.tabs.sendMessage(details.tabId, {
-      action: 'moderationFeedLoading'
-    }).catch(() => {}); // Ignore errors if tab not ready
+    if (isModerationFeed) {
+      browser.tabs.sendMessage(details.tabId, { action: 'moderationFeedLoading' }).catch(() => {});
+    }
 
     try {
       const filter = browser.webRequest.filterResponseData(details.requestId);
       const decoder = new TextDecoder('utf-8');
       let responseData = '';
 
-      console.log('[Background] Filter created successfully for request', details.requestId);
-
       filter.ondata = (event) => {
-        console.log('[Background] Filter.ondata called, received', event.data.byteLength, 'bytes');
-        const str = decoder.decode(event.data, { stream: true });
-        responseData += str;
+        responseData += decoder.decode(event.data, { stream: true });
         filter.write(event.data);
       };
 
       filter.onstop = () => {
-        console.log('[Background] Filter.onstop called');
-        console.log('[Background] Total response data length:', responseData.length);
-        console.log('[Background] First 200 chars:', responseData.substring(0, 200));
-
         try {
           const data = JSON.parse(responseData);
-          console.log('[Background] ✓ Successfully parsed JSON response');
-          console.log('[Background] Response keys:', Object.keys(data));
-          console.log('[Background] Full data:', data);
+          cachePostsFromResponse(details.tabId, data);
 
-          // Store the data associated with the tab
-          capturedApiData.set(details.tabId, data);
-          console.log('[Background] ✓ Stored data for tab', details.tabId);
-          console.log('[Background] capturedApiData size:', capturedApiData.size);
+          if (details.url.includes('/ExpandedFeedItemStory')) {
+            const feedItem = data?.data?.feedItem;
+            if (feedItem?.post) {
+              lastExpandedPostId.set(details.tabId, String(feedItem.post.id));
+              browser.tabs.sendMessage(details.tabId, {
+                action: 'expandedPostReady',
+                post: feedItem.post,
+                legacyAnalyticsId: feedItem.legacyAnalyticsId,
+              }).catch(() => {});
+            }
+          }
 
-          // Notify the content script that data is ready
-          browser.tabs.sendMessage(details.tabId, {
-            action: 'moderationDataReady',
-            data: data,
-          }).then(() => {
-            console.log('[Background] ✓ Message sent to content script successfully');
-          }).catch(err => {
-            console.error('[Background] ✗ Failed to send to content script:', err.message);
-          });
+          if (details.url.includes('/PagedComments')) {
+            mergePagedComments(details.tabId, data);
+          }
 
+          if (isModerationFeed) {
+            capturedApiData.set(details.tabId, data);
+            browser.tabs.sendMessage(details.tabId, {
+              action: 'moderationDataReady',
+              data: data,
+            }).catch(err => console.error('[Background] Failed to notify content script:', err.message));
+          }
         } catch (error) {
-          console.error('[Background] ✗ Error parsing API response:', error);
-          console.error('[Background] Response data:', responseData.substring(0, 500));
+          // Non-JSON or irrelevant response — ignore
         }
         filter.disconnect();
-        console.log('[Background] Filter disconnected');
       };
 
-      filter.onerror = (error) => {
-        console.error('[Background] ✗ Filter error:', error);
-      };
+      filter.onerror = () => filter.disconnect();
 
     } catch (error) {
-      console.error('[Background] ✗ Error setting up filter:', error);
-      console.error('[Background] Error stack:', error.stack);
+      console.error('[Background] Error setting up filter:', error);
     }
   },
   {
     urls: [
-      '*://nextdoor.com/api/gql/ModerationFeed',
-      '*://nextdoor.com/api/gql/ModerationFeed?',
-      '*://nextdoor.com/api/gql/ModerationFeed?*',
-      '*://*.nextdoor.com/api/gql/ModerationFeed',
-      '*://*.nextdoor.com/api/gql/ModerationFeed?',
-      '*://*.nextdoor.com/api/gql/ModerationFeed?*'
+      '*://nextdoor.com/api/gql/*',
+      '*://*.nextdoor.com/api/gql/*',
     ]
   },
   ['blocking']
 );
 
-// Debug listener to see ALL requests to nextdoor API
-browser.webRequest.onBeforeRequest.addListener(
-  (details) => {
-    console.log('[Background] [DEBUG] Any nextdoor API request detected:');
-    console.log('[Background] [DEBUG] URL:', details.url);
-    console.log('[Background] [DEBUG] Method:', details.method);
-  },
-  {
-    urls: ['*://nextdoor.com/api/*', '*://*.nextdoor.com/api/*'],
-  }
-);
-
-console.log('[Background] webRequest listener installed for ModerationFeed API');
+console.log('[Background] Broad GraphQL interceptor installed');
 
 // Load configuration on startup
 loadConfig();

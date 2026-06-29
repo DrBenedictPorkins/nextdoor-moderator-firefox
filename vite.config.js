@@ -32,6 +32,16 @@ export default defineConfig({
           );
         });
         console.log('Icons copied to dist/icons/');
+
+        const guidelinesDir = resolve(process.cwd(), 'dist/src/guidelines');
+        mkdirSync(guidelinesDir, { recursive: true });
+        ['guidelines.html', 'guidelines.js'].forEach(f => {
+          copyFileSync(
+            resolve(process.cwd(), 'src/guidelines', f),
+            resolve(guidelinesDir, f)
+          );
+        });
+        console.log('Guidelines page copied to dist/src/guidelines/');
       },
     },
     {
