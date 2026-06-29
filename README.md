@@ -21,7 +21,25 @@ The extension intercepts Nextdoor's moderation API in real time, extracts post a
 
 ## Screenshots
 
-*(Coming soon — see `assets/screenshots/`)*
+**Extension Popup** — Configure your LLM provider, API key, and model. Validated before saving.
+
+![Extension Popup](assets/screenshots/01-popup-configuration.jpeg)
+
+**Moderation Overlay** — Reports summary with vote counts, individual reviewer votes, and optional context input before AI analysis.
+
+![Moderation Overlay](assets/screenshots/02-moderation-overlay.jpeg)
+
+**AI Recommendation** — Color-coded verdict card with guideline scan, reasoning, and a ready-to-use comment suggestion. Model and provider shown top-right.
+
+![AI Recommendation](assets/screenshots/03-ai-recommendation.jpeg)
+
+**Post Panel — Preview** — Full thread view with all comments and replies, exportable as markdown.
+
+![Post Panel Preview](assets/screenshots/04-post-panel-preview.jpeg)
+
+**Post Panel — AI Chat** — Ask questions about the post in context. The full thread is always included.
+
+![Post Panel Chat](assets/screenshots/05-post-panel-chat.jpeg)
 
 ---
 

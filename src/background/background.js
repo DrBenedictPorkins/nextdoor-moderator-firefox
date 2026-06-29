@@ -313,6 +313,7 @@ ${NEXTDOOR_GUIDELINES}`;
   if (isAnthropic) {
     headers['x-api-key'] = CONFIG.apiKey;
     headers['anthropic-version'] = '2023-06-01';
+    headers['anthropic-dangerous-direct-browser-access'] = 'true';
   } else {
     headers['Authorization'] = `Bearer ${CONFIG.apiKey}`;
   }
