@@ -2508,16 +2508,18 @@ function enableButton() {
     button.style.cursor = 'pointer';
     button.style.background = '#166534';
     button.textContent = '⚖ AI Review';
+    button.title = 'Open AI moderation analysis for this post';
   }
 }
 
 function disableButton() {
   const button = document.getElementById('nextdoor-moderator-trigger');
   if (button) {
-    button.disabled = true;
-    button.style.opacity = '0.35';
-    button.style.cursor = 'not-allowed';
+    button.disabled = false;
+    button.style.opacity = '0.45';
+    button.style.cursor = 'pointer';
     button.style.background = '#1f2937';
+    button.title = 'Go to moderation feed';
   }
 }
 
@@ -2588,12 +2590,13 @@ function injectWidget() {
   };
 
   // ── AI Review button ──
-  const reviewBtn = mkBtn('nextdoor-moderator-trigger', '⚖ AI Review', 'Open AI moderation analysis for this post');
-  reviewBtn.disabled = true;
-  reviewBtn.style.opacity = '0.35';
-  reviewBtn.style.cursor = 'not-allowed';
+  const reviewBtn = mkBtn('nextdoor-moderator-trigger', '⚖ AI Review', 'Go to moderation feed');
+  reviewBtn.style.opacity = '0.45';
   reviewBtn.addEventListener('click', () => {
-    if (reviewBtn.disabled || !dataIsValid) return;
+    if (!dataIsValid) {
+      window.location.href = 'https://nextdoor.com/moderation_feed/';
+      return;
+    }
     const result = extractModerationData();
     createContentOverlay(result);
   });
@@ -2622,6 +2625,20 @@ function injectWidget() {
     if (post) showExportPreview(post);
   });
   widget.appendChild(panelBtn);
+
+  // ── Mod History link ──
+  const historyLink = document.createElement('a');
+  historyLink.href = 'https://nextdoor.com/moderation_history/';
+  historyLink.textContent = 'Mod History ↗';
+  historyLink.title = 'View your moderation history';
+  historyLink.style.cssText = `
+    display: block; text-align: center; font-size: 11px; color: #6b7280;
+    text-decoration: none; padding: 4px 4px 2px; margin-top: 2px;
+    border-top: 1px solid #1f2937;
+  `;
+  historyLink.addEventListener('mouseenter', () => { historyLink.style.color = '#9ca3af'; });
+  historyLink.addEventListener('mouseleave', () => { historyLink.style.color = '#6b7280'; });
+  widget.appendChild(historyLink);
 
   document.body.appendChild(widget);
 
